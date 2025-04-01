@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Common functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Admin access to all collections
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Categories and their subcollections
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+      
+      // Sale Types subcollection
+      match /saleTypes/{saleTypeId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin();
+      }
+      
+      // Goals subcollection
+      match /goals/{goalId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin();
+      }
+    }
+    
+    // Challenges collection
+    match /challenges/{challengeId} {
+      allow read: if isAuthenticated() || resource.data.isFree == true;
+      allow write: if isAdmin();
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+      allow update: if request.auth.uid == userId && 
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['firstName', 'lastName', 'email', 'goal', 'salesType', 'struggle', 'needHelpWith']);
+    }
+    
+    // Avatars collection
+    match /avatars/{avatarId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Submissions collection
+    match /submissions/{submissionId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && 
+        request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Push notifications
+    match /push_notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}
