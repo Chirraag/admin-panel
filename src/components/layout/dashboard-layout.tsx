@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   FolderTree,
   GraduationCap,
+  UsersRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +31,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: Users, label: 'Users', path: '/dashboard/users' },
+    { icon: UsersRound, label: 'Teams', path: '/dashboard/teams' },
     { icon: Trophy, label: 'Challenges', path: '/dashboard/challenges' },
     { icon: Send, label: 'Submissions', path: '/dashboard/submissions' },
     { icon: UserCircle, label: 'Avatars', path: '/dashboard/avatars' },

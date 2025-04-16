@@ -4,6 +4,8 @@ import { AuthForm } from '@/components/auth/auth-form';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { DashboardPage } from '@/pages/dashboard';
 import { UsersPage } from '@/pages/users';
+import { TeamsPage } from '@/pages/teams';
+import { TeamDetailsPage } from '@/pages/teams/team-details';
 import { ChallengesPage } from '@/pages/challenges';
 import { SubmissionsPage } from '@/pages/submissions';
 import { AvatarsPage } from '@/pages/avatars';
@@ -34,6 +36,26 @@ function App() {
               <ProtectedRoute>
                 <DashboardLayout>
                   <UsersPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/teams"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <TeamsPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/teams/:teamId"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <TeamDetailsPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }
