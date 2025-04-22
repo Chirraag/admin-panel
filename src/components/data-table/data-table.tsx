@@ -4,6 +4,8 @@ import {
   getCoreRowModel,
   useReactTable,
   getPaginationRowModel,
+  SortingState,
+  getSortedRowModel,
 } from '@tanstack/react-table';
 import {
   Table,
@@ -14,28 +16,42 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
+  pageSize?: number;
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
+  pageSize = 10,
 }: DataTableProps<TData, TValue>) {
+  const [sorting, setSorting] = useState<SortingState>([]);
+
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: {
+    getSortedRowModel: getSortedRowModel(),
+    onSortingChange: setSorting,
+    state: {
+      sorting,
       pagination: {
-        pageSize: 10,
+        pageSize: pageSize,
+        pageIndex: 0,
       },
     },
   });
+
+  // Reset to first page when pageSize changes
+  useEffect(() => {
+    table.setPageIndex(0);
+  }, [pageSize, table]);
 
   return (
     <div className="space-y-4">
@@ -45,13 +61,28 @@ export function DataTable<TData, TValue>({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="bg-gray-50 text-black font-medium">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
+                  <TableHead 
+                    key={header.id} 
+                    className="bg-gray-50 text-black font-medium"
+                  >
+                    {header.isPlaceholder ? null : (
+                      <div
+                        {...{
+                          className: header.column.getCanSort()
+                            ? 'cursor-pointer select-none flex items-center'
+                            : '',
+                          onClick: header.column.getToggleSortingHandler(),
+                        }}
+                      >
+                        {flexRender(
                           header.column.columnDef.header,
                           header.getContext()
                         )}
+                        {header.column.getCanSort() && (
+                          <ArrowUpDown className="ml-2 h-4 w-4" />
+                        )}
+                      </div>
+                    )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -60,7 +91,10 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} className="hover:bg-gray-50">
+                <TableRow 
+                  key={row.id} 
+                  className="hover:bg-gray-50"
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="text-gray-600">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -79,7 +113,6 @@ export function DataTable<TData, TValue>({
         </Table>
       </div>
 
-      {/* Pagination */}
       <div className="flex items-center justify-between px-2">
         <div className="flex-1 text-sm text-gray-500">
           {table.getFilteredRowModel().rows.length} total rows

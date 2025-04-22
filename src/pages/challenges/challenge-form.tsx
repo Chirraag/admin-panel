@@ -9,10 +9,10 @@ import { AIGenerateButton } from '@/components/forms/ai-generate-button';
 import { BasicInfoForm } from './components/basic-info-form';
 import { ProductForm } from './components/product-form';
 import { ProspectForm } from './components/prospect-form';
-import { TrainingForm } from './components/training-form';
 import { DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 // Validation schema
 const challengeSchema = z.object({
@@ -28,7 +28,6 @@ const challengeSchema = z.object({
   product_description: z.string().min(1, 'Product description is required'),
   prospect_data: z.string().min(1, 'Prospect data is required'),
   prospect_objection: z.string().min(1, 'Prospect objection is required'),
-  training_type: z.string().min(1, 'Training type is required'),
   category_id: z.string().min(1, 'Category selection is required'),
   objections: z.array(z.string()),
   talking_points: z.array(z.string()),
@@ -60,7 +59,6 @@ export function ChallengeForm({ initialData, onSubmit, onCancel }: ChallengeForm
       product_description: '',
       prospect_data: '',
       prospect_objection: '',
-      training_type: 'Cold Call',
       category_id: '',
       objections: [],
       talking_points: [],
@@ -80,7 +78,12 @@ export function ChallengeForm({ initialData, onSubmit, onCancel }: ChallengeForm
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await onSubmit(data);
+      // Set training_type to match type for backward compatibility
+      const finalData = {
+        ...data,
+        training_type: data.type
+      };
+      await onSubmit(finalData);
     } finally {
       setIsSubmitting(false);
     }
@@ -125,11 +128,22 @@ export function ChallengeForm({ initialData, onSubmit, onCancel }: ChallengeForm
               <BasicInfoForm control={form.control} />
               <ProductForm control={form.control} />
               <ProspectForm control={form.control} />
-              <TrainingForm 
-                control={form.control} 
-                onCancel={onCancel}
-                isSubmitting={isSubmitting}
-              />
+              
+              <div className="flex justify-end gap-4">
+                <Button type="button" variant="outline" onClick={onCancel}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {initialData ? 'Updating...' : 'Creating...'}
+                    </>
+                  ) : (
+                    initialData ? 'Update Challenge' : 'Create Challenge'
+                  )}
+                </Button>
+              </div>
             </form>
           </Form>
         </TabsContent>

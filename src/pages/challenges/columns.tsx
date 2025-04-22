@@ -14,10 +14,12 @@ export const columns: ColumnDef<Challenge>[] = [
   {
     accessorKey: "title",
     header: "Title",
+    sortable: true,
   },
   {
     accessorKey: "type",
     header: "Type",
+    sortable: true,
   },
   {
     accessorKey: "duration",
@@ -26,6 +28,7 @@ export const columns: ColumnDef<Challenge>[] = [
       const duration = row.getValue("duration") as number;
       return duration || 'N/A';
     },
+    enableSorting: false,
   },
   {
     accessorKey: "category",
@@ -34,6 +37,7 @@ export const columns: ColumnDef<Challenge>[] = [
       const category = row.getValue("category") as { name: string } | undefined;
       return category?.name || 'Uncategorized';
     },
+    enableSorting: false,
   },
   {
     accessorKey: "credits",
@@ -42,6 +46,7 @@ export const columns: ColumnDef<Challenge>[] = [
       const credits = row.getValue("credits") as number;
       return credits;
     },
+    enableSorting: false,
   },
   {
     accessorKey: "features",
@@ -65,10 +70,12 @@ export const columns: ColumnDef<Challenge>[] = [
         </div>
       );
     },
+    enableSorting: false,
   },
   {
     accessorKey: "product_name",
     header: "Product",
+    sortable: true,
   },
   {
     accessorKey: "isFree",
@@ -81,6 +88,7 @@ export const columns: ColumnDef<Challenge>[] = [
         </Badge>
       );
     },
+    enableSorting: false,
   },
   {
     id: "actions",
@@ -118,5 +126,6 @@ export const columns: ColumnDef<Challenge>[] = [
         </div>
       );
     },
+    enableSorting: false,
   },
 ];

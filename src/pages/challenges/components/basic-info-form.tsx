@@ -47,7 +47,14 @@ export function BasicInfoForm({ control }: BasicInfoFormProps) {
           id: doc.id,
           ...doc.data()
         } as Category));
-        setCategories(categoriesData);
+        // Filter out any categories with empty or undefined IDs or names
+        const validCategories = categoriesData.filter(category => 
+          category.id && 
+          category.id.trim() !== '' && 
+          category.name && 
+          category.name.trim() !== ''
+        );
+        setCategories(validCategories);
       } catch (error) {
         console.error('Error fetching categories:', error);
       }
@@ -56,7 +63,6 @@ export function BasicInfoForm({ control }: BasicInfoFormProps) {
     fetchCategories();
   }, []);
 
-  // Watch the isFree field to update credits when it changes
   const watchIsFree = (isFree: boolean, onChange: (value: number) => void, currentValue: number) => {
     useEffect(() => {
       if (isFree && currentValue !== 0) {
@@ -78,7 +84,7 @@ export function BasicInfoForm({ control }: BasicInfoFormProps) {
                 <FormLabel>Category <span className="text-red-500">*</span></FormLabel>
                 <Select 
                   onValueChange={field.onChange}
-                  value={field.value || ''}
+                  value={field.value}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -153,7 +159,7 @@ export function BasicInfoForm({ control }: BasicInfoFormProps) {
                 <FormLabel>Type</FormLabel>
                 <Select 
                   onValueChange={field.onChange} 
-                  value={field.value || 'Cold Call'}
+                  value={field.value}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -198,13 +204,11 @@ export function BasicInfoForm({ control }: BasicInfoFormProps) {
             control={control}
             name="credits"
             render={({ field }) => {
-              // Get the isFree value to conditionally disable the credits field
               return (
                 <FormField
                   control={control}
                   name="isFree"
                   render={({ field: isFreeField }) => {
-                    // Watch for changes to isFree and update credits accordingly
                     watchIsFree(isFreeField.value, field.onChange, field.value);
                     
                     return (

@@ -5,6 +5,8 @@ import { generateChallenge } from '@/lib/api/openai';
 import { ChallengeFormData } from '@/types/challenge';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 interface AIGenerateButtonProps {
   onGenerate: (data: ChallengeFormData) => void;
@@ -14,12 +16,13 @@ interface AIGenerateButtonProps {
 export function AIGenerateButton({ onGenerate, onSuccess }: AIGenerateButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [additionalPrompt, setAdditionalPrompt] = useState('');
 
   const handleGenerate = async () => {
     setError(null);
     try {
       setLoading(true);
-      const challenge = await generateChallenge();
+      const challenge = await generateChallenge(additionalPrompt);
       onGenerate(challenge);
       onSuccess(); // Switch to manual mode after successful generation
       toast.success('Challenge generated successfully');
@@ -35,6 +38,16 @@ export function AIGenerateButton({ onGenerate, onSuccess }: AIGenerateButtonProp
 
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="additional-prompt">Additional Instructions (Optional)</Label>
+        <Textarea
+          id="additional-prompt"
+          placeholder="Add any specific requirements or context for the AI generator..."
+          value={additionalPrompt}
+          onChange={(e) => setAdditionalPrompt(e.target.value)}
+        />
+      </div>
+
       <Button
         type="button"
         variant="outline"

@@ -15,6 +15,9 @@ export const sanitizeChallengeData = (data: ChallengeFormData) => {
     throw new Error('Invalid challenge type');
   }
 
+  // Convert objections array to string
+  const objectionString = data.objections?.join('\n') || '';
+
   return {
     title: (data.title || '').trim(),
     type,
@@ -27,10 +30,10 @@ export const sanitizeChallengeData = (data: ChallengeFormData) => {
     product_name: data.product_name || '',
     product_description: data.product_description || '',
     prospect_data: data.prospect_data || '',
-    prospect_objection: data.prospect_objection || '',
-    training_type: data.training_type || 'Cold Call',
+    prospect_objection: objectionString, // Store objections as a single string
+    training_type: type, // Set training_type to match type
     category_id: data.category_id || '',
-    objections: (data.objections || []).map(o => o.trim()),
+    objections: data.objections || [], // Keep original array for form state
     talking_points: (data.talking_points || []).map(t => t.trim()),
     credits: Number(data.credits),
   };

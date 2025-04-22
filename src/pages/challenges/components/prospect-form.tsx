@@ -35,20 +35,6 @@ export function ProspectForm({ control }: ProspectFormProps) {
 
         <FormField
           control={control}
-          name="prospect_objection"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Common Objections</FormLabel>
-              <FormControl>
-                <Textarea {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={control}
           name="objections"
           render={({ field }) => (
             <FormItem>

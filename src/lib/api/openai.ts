@@ -3,12 +3,12 @@ import { ChallengeFormData } from '@/types/challenge';
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
-export async function generateChallenge(): Promise<ChallengeFormData> {
+export async function generateChallenge(additionalPrompt: string = ''): Promise<ChallengeFormData> {
   if (!OPENAI_API_KEY) {
     throw new Error('OpenAI API key is not configured');
   }
 
-  const prompt = `Create a realistic sales training challenge. Format the response as a JSON object with these exact fields:
+  const basePrompt = `Create a realistic sales training challenge. Format the response as a JSON object with these exact fields:
   {
     "title": "string",
     "type": "string",
@@ -41,6 +41,10 @@ export async function generateChallenge(): Promise<ChallengeFormData> {
   - Duration should be between 180-600 seconds
   - Credits should be 10`;
 
+  const fullPrompt = additionalPrompt 
+    ? `${basePrompt}\n\nAdditional requirements:\n${additionalPrompt}`
+    : basePrompt;
+
   try {
     const response = await fetch(OPENAI_API_URL, {
       method: 'POST',
@@ -52,7 +56,7 @@ export async function generateChallenge(): Promise<ChallengeFormData> {
         model: 'gpt-4-0125-preview',
         messages: [{ 
           role: 'user', 
-          content: prompt 
+          content: fullPrompt 
         }],
         temperature: 0.7,
         max_tokens: 1000,
