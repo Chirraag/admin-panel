@@ -1,18 +1,27 @@
-import { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  collection,
+  doc,
+  getDocs,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
+import { X, Check, Search } from 'lucide-react';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
+
 import { db } from '@/lib/firebase';
 import { TeamDocument, TeamMember } from '@/types/team';
 import { User } from '@/types/user';
+import { cn } from '@/lib/utils';
+
 import { Button } from '@/components/ui/button';
-import { Plus, Loader2, X } from 'lucide-react';
-import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -21,172 +30,240 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
+const tsToString = (ts?: Timestamp) =>
+  ts?.toDate ? format(ts.toDate(), 'MMM dd, yyyy') : '—';
 
 interface MembersDialogProps {
   team: TeamDocument;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  availableUsers: User[];
+  onUpdate?: () => void;
 }
 
-export function MembersDialog({ team, open, onOpenChange, availableUsers }: MembersDialogProps) {
-  const [email, setEmail] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<string>('');
+export function MembersDialog({
+  team,
+  open,
+  onOpenChange,
+  onUpdate,
+}: MembersDialogProps) {
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [available, setAvailable] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
-  const handleAddMember = async () => {
-    const emailToAdd = selectedUser || email.trim();
-    if (!emailToAdd || adding) return;
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        const users = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() } as User),
+        );
 
-    setAdding(true);
-    try {
-      // Check if member already exists
-      if (team.members?.some(member => member.email === emailToAdd)) {
-        toast.error('User is already a team member');
-        return;
+        setAllUsers(users);
+
+        const validUsers = users.filter(
+          (u) => typeof u.email === 'string' && u.email.trim() !== ''
+        );
+        setAvailable(validUsers);
+      } catch (e) {
+        console.error(e);
+        toast.error('Failed to load users');
       }
+    };
 
-      // Find user ID if they exist in the system
-      const matchingUser = availableUsers.find(user => user.email === emailToAdd);
+    if (open) {
+      load();
+      setSearchTerm('');
+      setShowSuggestions(false);
+    }
+  }, [open]);
 
+  // Handle clicks outside of search component
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const memberRows = useMemo(() => team.members ?? [], [team.members]);
+
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm) return [];
+    const term = searchTerm.toLowerCase();
+    return available.filter(user => 
+      user.email?.toLowerCase().includes(term) ||
+      user.firstName?.toLowerCase().includes(term) ||
+      user.lastName?.toLowerCase().includes(term)
+    );
+  }, [available, searchTerm]);
+
+  const addMember = async (user: User) => {
+    if (!user || !user.email) {
+      toast.error('Invalid user selection');
+      return;
+    }
+
+    if ((team.members ?? []).some((m) => m.user_id === user.id)) {
+      toast.error('User already in team');
+      return;
+    }
+
+    try {
+      setBusy(true);
+
+      const now = new Date();
+      
       const newMember: TeamMember = {
-        email: emailToAdd,
-        user_id: matchingUser?.id || null,
-        joined_at: new Date(),
-        status: 'pending'
+        id: crypto.randomUUID(),
+        user_id: user.id,
+        email: user.email,
+        uuid: user.id,
+        joined_at: Timestamp.fromDate(now),
       };
 
-      const updatedMembers = [...(team.members || []), newMember];
+      const updated = [...(team.members ?? []), newMember];
+      await updateDoc(doc(db, 'teams', team.id), { members: updated });
+      team.members = updated;
 
-      await updateDoc(doc(db, 'teams', team.id), {
-        members: updatedMembers
-      });
-
-      toast.success('Team member added successfully');
-      setEmail('');
-      setSelectedUser('');
-    } catch (error) {
-      console.error('Error adding team member:', error);
-      toast.error('Failed to add team member');
+      setSearchTerm('');
+      setShowSuggestions(false);
+      toast.success('Member added');
+      onUpdate?.();
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to add member');
     } finally {
-      setAdding(false);
+      setBusy(false);
     }
   };
 
-  const handleRemoveMember = async (memberEmail: string) => {
+  const removeMember = async (memberId: string) => {
     try {
-      const updatedMembers = team.members.filter(member => member.email !== memberEmail);
-      
-      await updateDoc(doc(db, 'teams', team.id), {
-        members: updatedMembers
-      });
-
-      toast.success('Team member removed');
-    } catch (error) {
-      console.error('Error removing team member:', error);
-      toast.error('Failed to remove team member');
+      const updated = (team.members ?? []).filter((m) => m.id !== memberId);
+      await updateDoc(doc(db, 'teams', team.id), { members: updated });
+      team.members = updated;
+      toast.success('Member removed');
+      onUpdate?.();
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to remove member');
     }
   };
-
-  const formatDate = (date: any) => {
-    if (!date) return '';
-    if (date instanceof Date) return date.toLocaleDateString();
-    if (date.toDate && typeof date.toDate === 'function') return date.toDate().toLocaleDateString();
-    return new Date(date).toLocaleDateString();
-  };
-
-  const availableEmails = availableUsers
-    .filter(user => !team.members?.some(member => member.email === user.email))
-    .map(user => user.email);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Team Members</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
-          <div className="flex gap-4">
-            {availableEmails.length > 0 ? (
-              <Select value={selectedUser} onValueChange={setSelectedUser}>
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select a user" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableEmails.map((email) => (
-                    <SelectItem key={email} value={email}>
-                      {email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
+        <div className="flex flex-col h-full space-y-4">
+          <div className="relative" ref={searchRef}>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter email address"
-                className="flex-1"
+                placeholder="Search users..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                className="pl-9"
               />
+            </div>
+
+            {showSuggestions && searchTerm && (
+              <div className="absolute z-10 mt-1 w-full bg-white rounded-md border shadow-lg">
+                <ScrollArea className="h-[200px]">
+                  {filteredUsers.length > 0 ? (
+                    <div className="py-1">
+                      {filteredUsers.map((user) => (
+                        <button
+                          key={user.id}
+                          className={cn(
+                            "w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3",
+                            "focus:outline-none focus:bg-gray-50",
+                            (team.members ?? []).some(m => m.user_id === user.id) && "opacity-50 cursor-not-allowed"
+                          )}
+                          onClick={() => addMember(user)}
+                          disabled={busy || (team.members ?? []).some(m => m.user_id === user.id)}
+                        >
+                          <Avatar className="h-8 w-8 border">
+                            <AvatarFallback className="bg-primary/10">
+                              {user.firstName?.[0]}
+                              {user.lastName?.[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {user.firstName} {user.lastName}
+                            </p>
+                            <p className="text-sm text-gray-500 truncate">
+                              {user.email}
+                            </p>
+                          </div>
+                          {(team.members ?? []).some(m => m.user_id === user.id) ? (
+                            <span className="text-xs text-gray-400">Already added</span>
+                          ) : (
+                            <Check className="h-4 w-4 text-gray-400" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-3 text-sm text-gray-500">
+                      No users found
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
             )}
-            <Button onClick={handleAddMember} disabled={adding}>
-              {adding ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                <>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Member
-                </>
-              )}
-            </Button>
           </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {team.members?.map((member) => (
-                <TableRow key={member.email}>
-                  <TableCell>{member.email}</TableCell>
-                  <TableCell>
-                    <Badge variant={member.status === 'active' ? 'default' : 'secondary'}>
-                      {member.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {formatDate(member.joined_at)}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveMember(member.email)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="flex-1 min-h-0 border rounded-lg">
+            <ScrollArea className="h-[400px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="bg-gray-50">Email</TableHead>
+                    <TableHead className="bg-gray-50">Joined</TableHead>
+                    <TableHead className="bg-gray-50 w-[50px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {memberRows.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell>{m.email}</TableCell>
+                      <TableCell>{tsToString(m.joined_at)}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeMember(m.id)}
+                          disabled={busy}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
