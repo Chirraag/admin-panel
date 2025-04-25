@@ -18,40 +18,35 @@ export interface TeamMember {
 export interface TeamDocument {
   id: string;
   name: string;
-  company_logo: string;
-  created_at: Timestamp;
-  customers_desc: string;
   description: string;
-  objections: string[];
+  company_logo?: string;
+  team_leader_email: string;
+  website: string;
+  category: string;
+  customers_desc: string;
   offerings_desc: string;
-  status: 'Pending' | 'Approved' | 'Declined';
-  team_leader_uid: string;
+  objections: string[];
   touchpoints: string[];
-  members: TeamMember[];
-  
-  // Fields available after approval
-  team_code?: string;
-  category?: string;
-  challenges?: string[];
-  website?: string;
   social_media?: SocialMediaLinks;
-  knowledge_base?: string[];
+  status: 'Pending' | 'Approved' | 'Declined';
+  created_at?: Timestamp;
+  updated_at?: Timestamp;
+  team_code?: string;
+  members?: TeamMember[];
+  onApprove?: (team: TeamDocument) => void;
+  onDecline?: (team: TeamDocument) => void;
 }
 
 export interface TeamFormData {
   name: string;
-  company_logo: string;
-  customers_desc: string;
   description: string;
-  objections: string[];
-  offerings_desc: string;
-  touchpoints: string[];
-}
-
-export interface ApprovalFormData {
-  team_code: string;
-  category: string;
+  company_logo?: string;
+  team_leader_email: string;
   website: string;
+  category: string;
+  customers_desc: string;
+  offerings_desc: string;
+  objections: string[];
+  touchpoints: string[];
   social_media?: SocialMediaLinks;
-  knowledge_base?: string[];
 }

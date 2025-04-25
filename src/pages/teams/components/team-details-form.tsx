@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -6,7 +6,10 @@ import { TeamDocument } from '@/types/team';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Pencil, X, Check, FileText } from 'lucide-react';
+import { Loader2, Pencil, X, Check, Upload } from 'lucide-react';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { toast } from 'sonner';
 import {
   Form,
   FormControl,
@@ -22,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { KnowledgeBaseUpload } from './knowledge-base-upload';
 
 const CATEGORIES = [
   'SaaS Sales',
@@ -42,18 +44,17 @@ const detailsSchema = z.object({
   category: z.enum(CATEGORIES),
   website: z.string().url('Invalid website URL'),
   team_leader_email: z.string().email('Invalid email address'),
+  company_logo: z.string().optional(),
   social_media: z.object({
     youtube: z.string().url('Invalid YouTube URL').optional().or(z.literal('')),
     twitter: z.string().min(1, 'Twitter handle is required').optional().or(z.literal('')),
     instagram: z.string().min(1, 'Instagram handle is required').optional().or(z.literal('')),
     tiktok: z.string().min(1, 'TikTok handle is required').optional().or(z.literal('')),
   }),
-  knowledge_base: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    url: z.string(),
-    type: z.string(),
-  })),
+  customers_desc: z.string().min(1, 'Customer description is required'),
+  offerings_desc: z.string().min(1, 'Offerings description is required'),
+  objections: z.array(z.string()),
+  touchpoints: z.array(z.string()),
 });
 
 interface TeamDetailsFormProps {
@@ -65,22 +66,7 @@ interface TeamDetailsFormProps {
 export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamDetailsFormProps) {
   const [isEditing, setIsEditing] = useState(defaultEditMode);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Set edit mode based on team status when component mounts
-  useEffect(() => {
-    if (team.status === 'Pending') {
-      setIsEditing(true);
-    }
-  }, [team.status]);
-
-  // Return early if team is null or undefined
-  if (!team) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-      </div>
-    );
-  }
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const form = useForm<z.infer<typeof detailsSchema>>({
     resolver: zodResolver(detailsSchema),
@@ -90,24 +76,52 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
       category: (team.category as any) || 'SaaS Sales',
       website: team.website || '',
       team_leader_email: team.team_leader_email || '',
+      company_logo: team.company_logo || '',
+      customers_desc: team.customers_desc || '',
+      offerings_desc: team.offerings_desc || '',
+      objections: team.objections || [],
+      touchpoints: team.touchpoints || [],
       social_media: {
         youtube: team.social_media?.youtube || '',
         twitter: team.social_media?.twitter || '',
         instagram: team.social_media?.instagram || '',
         tiktok: team.social_media?.tiktok || '',
       },
-      knowledge_base: team.knowledge_base || [],
     },
   });
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingLogo(true);
+
+      // Create a reference to the file in Firebase Storage
+      const storageRef = ref(storage, `teams/logos/${Date.now()}-${file.name}`);
+      
+      // Upload the file
+      await uploadBytes(storageRef, file);
+      
+      // Get the download URL
+      const url = await getDownloadURL(storageRef);
+      
+      form.setValue('company_logo', url);
+      toast.success('Logo uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      toast.error('Failed to upload logo');
+    } finally {
+      setUploadingLogo(false);
+      event.target.value = '';
+    }
+  };
 
   const handleSubmit = async (data: z.infer<typeof detailsSchema>) => {
     setIsSubmitting(true);
     try {
       await onSave(data);
-      // Only set editing to false if not in pending status
-      if (team.status !== 'Pending') {
-        setIsEditing(false);
-      }
+      setIsEditing(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -128,98 +142,80 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
           </Button>
         </div>
 
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Description</h3>
-          <p className="text-gray-600">{team.description || 'No description provided'}</p>
-        </div>
-
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Team Information</h3>
-          <dl className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-6">
             <div>
-              <dt className="text-sm font-medium text-gray-500">Category</dt>
-              <dd className="mt-1 text-sm text-gray-900">{team.category || 'Not specified'}</dd>
+              <h3 className="text-sm font-medium text-gray-500">Team Name</h3>
+              <p className="mt-1 text-lg">{team.name}</p>
             </div>
+
             <div>
-              <dt className="text-sm font-medium text-gray-500">Website</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {team.website ? (
-                  <a href={team.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                    {team.website}
-                  </a>
-                ) : (
-                  'Not specified'
+              <h3 className="text-sm font-medium text-gray-500">Description</h3>
+              <p className="mt-1">{team.description}</p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Category</h3>
+              <p className="mt-1">{team.category}</p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Website</h3>
+              <p className="mt-1">
+                <a href={team.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  {team.website}
+                </a>
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Team Leader</h3>
+              <p className="mt-1">{team.team_leader_email}</p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Customer Description</h3>
+              <p className="mt-1">{team.customers_desc}</p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Offerings Description</h3>
+              <p className="mt-1">{team.offerings_desc}</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {team.company_logo && (
+              <div>
+                <h3 className="text-sm font-medium text-gray-500">Company Logo</h3>
+                <div className="mt-2 relative aspect-square w-40 rounded-lg overflow-hidden border">
+                  <img 
+                    src={team.company_logo} 
+                    alt={team.name} 
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Social Media</h3>
+              <div className="mt-2 space-y-2">
+                {team.social_media?.instagram && (
+                  <p>Instagram: @{team.social_media.instagram}</p>
                 )}
-              </dd>
+                {team.social_media?.tiktok && (
+                  <p>TikTok: @{team.social_media.tiktok}</p>
+                )}
+                {team.social_media?.youtube && (
+                  <p>YouTube: {team.social_media.youtube}</p>
+                )}
+                {team.social_media?.twitter && (
+                  <p>Twitter: @{team.social_media.twitter}</p>
+                )}
+              </div>
             </div>
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Team Leader</dt>
-              <dd className="mt-1 text-sm text-gray-900">{team.team_leader_email || 'Not specified'}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Social Media</h3>
-          <dl className="grid grid-cols-2 gap-4">
-            {Object.entries(team.social_media || {}).map(([platform, handle]) => (
-              handle && (
-                <div key={platform}>
-                  <dt className="text-sm font-medium text-gray-500 capitalize">{platform}</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {platform === 'youtube' ? (
-                      <a href={handle} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                        {handle}
-                      </a>
-                    ) : (
-                      <a 
-                        href={`https://${platform}.com/${handle.replace('@', '')}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        {handle}
-                      </a>
-                    )}
-                  </dd>
-                </div>
-              )
-            ))}
-          </dl>
-          {!team.social_media || Object.values(team.social_media).every(v => !v) && (
-            <p className="text-sm text-gray-500">No social media links provided</p>
-          )}
-        </div>
-
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Knowledge Base</h3>
-          {team.knowledge_base && team.knowledge_base.length > 0 ? (
-            <div className="space-y-2">
-              {team.knowledge_base.map((file) => (
-                <div
-                  key={file.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-blue-500" />
-                    <div>
-                      <p className="font-medium">{file.name}</p>
-                      <p className="text-sm text-gray-500">{file.type}</p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => window.open(file.url, '_blank')}
-                  >
-                    <FileText className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500">No files uploaded yet</p>
-          )}
+          </div>
         </div>
       </div>
     );
@@ -232,7 +228,6 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
           <Button
             type="button"
             variant="ghost"
-            size="sm"
             onClick={() => setIsEditing(false)}
             disabled={isSubmitting}
           >
@@ -241,7 +236,6 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
           </Button>
           <Button
             type="submit"
-            size="sm"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
@@ -258,100 +252,16 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
           </Button>
         </div>
 
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Team Name</FormLabel>
-              <FormControl>
-                <Input {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl>
-                <Textarea {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="category"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Category</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {CATEGORIES.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="website"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Website</FormLabel>
-                <FormControl>
-                  <Input {...field} type="url" placeholder="https://" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <FormField
-          control={form.control}
-          name="team_leader_email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Team Leader Email</FormLabel>
-              <FormControl>
-                <Input {...field} type="email" />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <div>
-          <h3 className="text-lg font-semibold mb-4">Social Media Links</h3>
-          <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-6">
             <FormField
               control={form.control}
-              name="social_media.youtube"
+              name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>YouTube Channel URL</FormLabel>
+                  <FormLabel>Team Name</FormLabel>
                   <FormControl>
-                    <Input {...field} type="url" placeholder="https://youtube.com/..." />
+                    <Input {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -360,12 +270,12 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
 
             <FormField
               control={form.control}
-              name="social_media.twitter"
+              name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>X (Twitter) Handle</FormLabel>
+                  <FormLabel>Description</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="@username" />
+                    <Textarea {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -374,12 +284,37 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
 
             <FormField
               control={form.control}
-              name="social_media.instagram"
+              name="category"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Instagram Handle</FormLabel>
+                  <FormLabel>Category</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {CATEGORIES.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="website"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Website</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="@username" />
+                    <Input {...field} type="url" placeholder="https://" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -388,36 +323,159 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
 
             <FormField
               control={form.control}
-              name="social_media.tiktok"
+              name="team_leader_email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>TikTok Handle</FormLabel>
+                  <FormLabel>Team Leader Email</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="@username" />
+                    <Input {...field} type="email" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="customers_desc"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Customer Description</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="offerings_desc"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Offerings Description</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
           </div>
-        </div>
 
-        <FormField
-          control={form.control}
-          name="knowledge_base"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Knowledge Base Files</FormLabel>
-              <FormControl>
-                <KnowledgeBaseUpload
-                  files={field.value}
-                  onChange={field.onChange}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+          <div className="space-y-6">
+            <FormField
+              control={form.control}
+              name="company_logo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Company Logo</FormLabel>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                        id="logo-upload"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => document.getElementById('logo-upload')?.click()}
+                        disabled={uploadingLogo}
+                        className="w-full"
+                      >
+                        {uploadingLogo ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Upload Logo
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    {field.value && (
+                      <div className="relative aspect-square w-40 rounded-lg overflow-hidden border">
+                        <img
+                          src={field.value}
+                          alt="Company logo"
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium">Social Media Links</h3>
+              <FormField
+                control={form.control}
+                name="social_media.instagram"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Instagram</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="@username" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="social_media.tiktok"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>TikTok</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="@username" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="social_media.youtube"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>YouTube</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Channel URL" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="social_media.twitter"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>X (Twitter)</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="@username" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+        </div>
       </form>
     </Form>
   );

@@ -1,11 +1,11 @@
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { ApprovalFormData } from '@/types/team';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useState } from 'react';
-import { Loader2, Upload } from 'lucide-react';
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { ApprovalFormData } from "@/types/team";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useState } from "react";
+import { Loader2, Upload, X } from "lucide-react";
 import {
   Form,
   FormControl,
@@ -13,38 +13,38 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
+} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 
 const CATEGORIES = [
-  'SaaS Sales',
-  'Real Estate',
-  'Insurance',
-  'Retail',
-  'Healthcare',
-  'Financial Services',
-  'Technology',
-  'Education',
-  'Other'
+  "SaaS Sales",
+  "Real Estate",
+  "Insurance",
+  "Retail",
+  "Healthcare",
+  "Financial Services",
+  "Technology",
+  "Education",
+  "Other",
 ] as const;
 
 const approvalSchema = z.object({
-  team_code: z.string().min(6, 'Team code must be at least 6 characters'),
+  team_code: z.string().min(6, "Team code must be at least 6 characters"),
   category: z.enum(CATEGORIES),
-  website: z.string().url('Invalid website URL'),
+  website: z.string().url("Invalid website URL"),
   social_media: z.object({
     instagram: z.string().optional(),
     tiktok: z.string().optional(),
     youtube: z.string().optional(),
     twitter: z.string().optional(),
   }),
-  knowledge_base: z.array(z.string().url('Invalid URL')).optional(),
+  knowledge_base: z.array(z.string().url("Invalid URL")).optional(),
 });
 
 interface ApprovalFormProps {
@@ -59,14 +59,14 @@ export function ApprovalForm({ onSubmit, onCancel }: ApprovalFormProps) {
   const form = useForm<ApprovalFormData>({
     resolver: zodResolver(approvalSchema),
     defaultValues: {
-      team_code: '',
-      category: 'SaaS Sales',
-      website: '',
+      team_code: "",
+      category: "SaaS Sales",
+      website: "",
       social_media: {
-        instagram: '',
-        tiktok: '',
-        youtube: '',
-        twitter: '',
+        instagram: "",
+        tiktok: "",
+        youtube: "",
+        twitter: "",
       },
       knowledge_base: [],
     },
@@ -83,20 +83,20 @@ export function ApprovalForm({ onSubmit, onCancel }: ApprovalFormProps) {
   };
 
   const addKnowledgeBaseUrl = () => {
-    setKnowledgeBaseUrls([...knowledgeBaseUrls, '']);
+    setKnowledgeBaseUrls([...knowledgeBaseUrls, ""]);
   };
 
   const removeKnowledgeBaseUrl = (index: number) => {
     const newUrls = knowledgeBaseUrls.filter((_, i) => i !== index);
     setKnowledgeBaseUrls(newUrls);
-    form.setValue('knowledge_base', newUrls);
+    form.setValue("knowledge_base", newUrls);
   };
 
   const updateKnowledgeBaseUrl = (index: number, value: string) => {
     const newUrls = [...knowledgeBaseUrls];
     newUrls[index] = value;
     setKnowledgeBaseUrls(newUrls);
-    form.setValue('knowledge_base', newUrls);
+    form.setValue("knowledge_base", newUrls);
   };
 
   return (
@@ -257,7 +257,7 @@ export function ApprovalForm({ onSubmit, onCancel }: ApprovalFormProps) {
                 Approving...
               </>
             ) : (
-              'Approve Team'
+              "Approve Team"
             )}
           </Button>
         </div>
