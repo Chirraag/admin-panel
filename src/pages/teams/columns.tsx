@@ -1,11 +1,11 @@
 import { ColumnDef } from "@tanstack/react-table";
-import { TeamDocument } from "@/types/team";
+import { Team } from "@/types/team";
 import { MoreHorizontal, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 
-export const columns: ColumnDef<TeamDocument>[] = [
+export const columns: ColumnDef<Team>[] = [
   {
     accessorKey: "name",
     header: "Name",
@@ -35,14 +35,26 @@ export const columns: ColumnDef<TeamDocument>[] = [
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       return (
-        <Badge variant={
-          status === 'Approved' ? 'default' :
-          status === 'Pending' ? 'secondary' :
-          'destructive'
-        }>
+        <Badge
+          variant={
+            status === "Approved"
+              ? "default"
+              : status === "Pending"
+                ? "secondary"
+                : "destructive"
+          }
+        >
           {status}
         </Badge>
       );
+    },
+  },
+  {
+    accessorKey: "members",
+    header: "Members",
+    cell: ({ row }) => {
+      const members = (row.getValue("members") as any[]) || [];
+      return members.length;
     },
   },
   {
@@ -59,7 +71,7 @@ export const columns: ColumnDef<TeamDocument>[] = [
       const team = row.original;
       const status = team.status;
 
-      if (status === 'Pending') {
+      if (status === "Pending") {
         return (
           <div className="flex items-center gap-2">
             <Button
@@ -84,7 +96,7 @@ export const columns: ColumnDef<TeamDocument>[] = [
         );
       }
 
-      if (status === 'Approved') {
+      if (status === "Approved") {
         return (
           <Button
             variant="outline"

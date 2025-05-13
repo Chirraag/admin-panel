@@ -1,17 +1,35 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { collection, doc, getDoc, getDocs, updateDoc, serverTimestamp, addDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { TeamDocument } from '@/types/team';
-import { Challenge, ChallengeFormData } from '@/types/challenge';
-import { Card } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { MembersDialog } from './components/members-dialog';
-import { Button } from '@/components/ui/button';
-import { Users, FileText, Trophy, ArrowLeft, Plus, Pencil, Trash2 } from 'lucide-react';
-import { format } from 'date-fns';
-import { toast } from 'sonner';
+import { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  updateDoc,
+  serverTimestamp,
+  addDoc,
+  deleteDoc,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { TeamDocument } from "@/types/team";
+import { Challenge, ChallengeFormData } from "@/types/challenge";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { MembersDialog } from "./components/members-dialog";
+import { Button } from "@/components/ui/button";
+import { ChallengeImportTab } from "./components/ChallengeImportTab";
+import {
+  Users,
+  FileText,
+  Trophy,
+  ArrowLeft,
+  Plus,
+  Pencil,
+  Trash2,
+} from "lucide-react";
+import { format } from "date-fns";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -19,11 +37,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { TeamDetailsForm } from './components/team-details-form';
-import { ChallengeForm } from '@/pages/challenges/challenge-form';
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { TeamDetailsForm } from "./components/team-details-form";
+import { ChallengeForm } from "@/pages/challenges/challenge-form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,8 +67,12 @@ export function TeamDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showMembersDialog, setShowMembersDialog] = useState(false);
   const [showChallengeForm, setShowChallengeForm] = useState(false);
-  const [editingChallenge, setEditingChallenge] = useState<Challenge | null>(null);
-  const [challengeToDelete, setChallengeToDelete] = useState<Challenge | null>(null);
+  const [editingChallenge, setEditingChallenge] = useState<Challenge | null>(
+    null,
+  );
+  const [challengeToDelete, setChallengeToDelete] = useState<Challenge | null>(
+    null,
+  );
 
   const fetchTeamData = async () => {
     if (!teamId) return;
@@ -53,32 +80,37 @@ export function TeamDetailsPage() {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Fetch team details
-      const teamDoc = await getDoc(doc(db, 'teams', teamId));
+      const teamDoc = await getDoc(doc(db, "teams", teamId));
       if (!teamDoc.exists()) {
-        throw new Error('Team not found');
+        throw new Error("Team not found");
       }
-      
+
       const teamData = {
         id: teamDoc.id,
         ...teamDoc.data(),
-        members: teamDoc.data().members || []
+        members: teamDoc.data().members || [],
       } as TeamDocument;
-      
+
       setTeam(teamData);
 
       // Fetch team challenges from subcollection
-      const challengesSnapshot = await getDocs(collection(doc(db, 'teams', teamId), 'challenges'));
-      const challengesData = challengesSnapshot.docs.map(doc => ({
+      const challengesSnapshot = await getDocs(
+        collection(doc(db, "teams", teamId), "challenges"),
+      );
+      const challengesData = challengesSnapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
       })) as Challenge[];
       setChallenges(challengesData);
-
     } catch (error) {
-      console.error('Error fetching team data:', error);
-      setError(error instanceof Error ? error.message : 'An error occurred while fetching team data');
+      console.error("Error fetching team data:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "An error occurred while fetching team data",
+      );
     } finally {
       setLoading(false);
     }
@@ -95,20 +127,48 @@ export function TeamDetailsPage() {
       // Add challenge to team's challenges subcollection
       const challengeData = {
         ...data,
-        created_at: serverTimestamp(),
+        dateAt: serverTimestamp(),
       };
 
-      await addDoc(collection(doc(db, 'teams', team.id), 'challenges'), challengeData);
-      
-      toast.success('Challenge created successfully');
+      await addDoc(
+        collection(doc(db, "teams", team.id), "challenges"),
+        challengeData,
+      );
+
+      toast.success("Challenge created successfully");
       setShowChallengeForm(false);
       setEditingChallenge(null);
-      
+
       // Refresh challenges
       fetchTeamData();
     } catch (error) {
-      console.error('Error creating challenge:', error);
-      toast.error('Failed to create challenge');
+      console.error("Error creating challenge:", error);
+      toast.error("Failed to create challenge");
+    }
+  };
+
+  const handleImportChallenge = async (challenge: Challenge) => {
+    if (!team) return;
+
+    try {
+      // Create a new challenge in this team's subcollection
+      // Clone all data but create a new ID
+      const { id, ...challengeData } = challenge;
+
+      // Add the challenge to team's challenges subcollection
+      await addDoc(collection(doc(db, "teams", team.id), "challenges"), {
+        ...challengeData,
+        dateAt: serverTimestamp(),
+      });
+
+      toast.success("Challenge imported successfully");
+      setShowChallengeForm(false);
+
+      // Refresh challenges
+      fetchTeamData();
+    } catch (error) {
+      console.error("Error importing challenge:", error);
+      toast.error("Failed to import challenge");
     }
   };
 
@@ -117,20 +177,23 @@ export function TeamDetailsPage() {
 
     try {
       // Update challenge in team's challenges subcollection
-      await updateDoc(doc(db, 'teams', team.id, 'challenges', editingChallenge.id), {
-        ...data,
-        updated_at: serverTimestamp(),
-      });
-      
-      toast.success('Challenge updated successfully');
+      await updateDoc(
+        doc(db, "teams", team.id, "challenges", editingChallenge.id),
+        {
+          ...data,
+          updated_at: serverTimestamp(),
+        },
+      );
+
+      toast.success("Challenge updated successfully");
       setShowChallengeForm(false);
       setEditingChallenge(null);
-      
+
       // Refresh challenges
       fetchTeamData();
     } catch (error) {
-      console.error('Error updating challenge:', error);
-      toast.error('Failed to update challenge');
+      console.error("Error updating challenge:", error);
+      toast.error("Failed to update challenge");
     }
   };
 
@@ -139,16 +202,18 @@ export function TeamDetailsPage() {
 
     try {
       // Delete challenge from team's challenges subcollection
-      await deleteDoc(doc(db, 'teams', team.id, 'challenges', challengeToDelete.id));
-      
-      toast.success('Challenge deleted successfully');
+      await deleteDoc(
+        doc(db, "teams", team.id, "challenges", challengeToDelete.id),
+      );
+
+      toast.success("Challenge deleted successfully");
       setChallengeToDelete(null);
-      
+
       // Refresh challenges
       fetchTeamData();
     } catch (error) {
-      console.error('Error deleting challenge:', error);
-      toast.error('Failed to delete challenge');
+      console.error("Error deleting challenge:", error);
+      toast.error("Failed to delete challenge");
     }
   };
 
@@ -159,7 +224,7 @@ export function TeamDetailsPage() {
 
   const handleUpdateDetails = async (data: any) => {
     if (!team) return;
-    
+
     try {
       // Create the update object with all fields
       const updateData = {
@@ -168,49 +233,58 @@ export function TeamDetailsPage() {
         category: data.category,
         website: data.website,
         team_leader_email: data.team_leader_email,
+        company_logo: data.company_logo, // Make sure this is included
+        customers_desc: data.customers_desc, // Make sure this is included
+        offerings_desc: data.offerings_desc, // Make sure this is included
         social_media: data.social_media,
-        knowledge_base: data.knowledge_base.map((file: any) => ({
-          id: file.id,
-          name: file.name,
-          url: file.url,
-          type: file.type
-        })),
-        dateAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+        // Only include knowledge_base if it exists in data
+        ...(data.knowledge_base && {
+          knowledge_base: data.knowledge_base.map((file: any) => ({
+            id: file.id,
+            name: file.name,
+            url: file.url,
+            type: file.type,
+          })),
+        }),
       };
 
       // Update the document
-      await updateDoc(doc(db, 'teams', team.id), updateData);
+      await updateDoc(doc(db, "teams", team.id), updateData);
 
       // Update local state
-      setTeam(prev => prev ? {
-        ...prev,
-        ...updateData,
-        knowledge_base: data.knowledge_base
-      } : null);
-      
-      toast.success('Team details updated successfully');
+      setTeam((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...updateData,
+            }
+          : null,
+      );
+
+      toast.success("Team details updated successfully");
     } catch (error) {
-      console.error('Error updating team details:', error);
-      toast.error('Failed to update team details');
+      console.error("Error updating team details:", error);
+      toast.error("Failed to update team details");
     }
   };
 
   const formatDate = (date: any) => {
-    if (!date) return 'N/A';
-    
+    if (!date) return "N/A";
+
     try {
-      if (date && typeof date.toDate === 'function') {
-        return format(date.toDate(), 'MMM dd, yyyy');
+      if (date && typeof date.toDate === "function") {
+        return format(date.toDate(), "MMM dd, yyyy");
       }
-      
-      if (date instanceof Date || typeof date === 'number') {
-        return format(date, 'MMM dd, yyyy');
+
+      if (date instanceof Date || typeof date === "number") {
+        return format(date, "MMM dd, yyyy");
       }
-      
-      return 'N/A';
+
+      return "N/A";
     } catch (error) {
-      console.error('Error formatting date:', error);
-      return 'N/A';
+      console.error("Error formatting date:", error);
+      return "N/A";
     }
   };
 
@@ -245,7 +319,7 @@ export function TeamDetailsPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/dashboard/teams')}
+            onClick={() => navigate("/dashboard/teams")}
             className="mr-2"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -259,7 +333,16 @@ export function TeamDetailsPage() {
           )}
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{team.name}</h1>
-            <p className="text-sm text-gray-500">Created {formatDate(team.dateAt)}</p>
+            <p className="text-sm text-gray-500">
+              Created {formatDate(team.dateAt)}
+            </p>
+            {team.team_code && (
+              <div className="flex items-center">
+                <span className="text-sm font-medium bg-gray-100 px-2 py-1 rounded">
+                  Team Code: {team.team_code}
+                </span>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -295,7 +378,9 @@ export function TeamDetailsPage() {
             <FileText className="h-5 w-5 text-gray-500" />
             <h3 className="font-semibold">Knowledge Base</h3>
           </div>
-          <p className="mt-2 text-2xl font-bold">{team.knowledge_base?.length || 0}</p>
+          <p className="mt-2 text-2xl font-bold">
+            {team.knowledge_base?.length || 0}
+          </p>
         </Card>
       </div>
 
@@ -308,10 +393,16 @@ export function TeamDetailsPage() {
           </TabsList>
 
           <TabsContent value="details" className="p-6">
-            <TeamDetailsForm 
-              team={team} 
-              onSave={handleUpdateDetails}
-            />
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-sm font-medium text-gray-500">Team Code</h3>
+              <p className="mt-1 text-lg font-mono">
+                {team.team_code || "N/A"}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Share this code with team members to join
+              </p>
+            </div>
+            <TeamDetailsForm team={team} onSave={handleUpdateDetails} />
           </TabsContent>
 
           <TabsContent value="members" className="p-6">
@@ -333,7 +424,10 @@ export function TeamDetailsPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={2} className="text-center py-4 text-gray-500">
+                      <TableCell
+                        colSpan={2}
+                        className="text-center py-4 text-gray-500"
+                      >
                         No members yet
                       </TableCell>
                     </TableRow>
@@ -376,8 +470,10 @@ export function TeamDetailsPage() {
                         <TableCell>{challenge.type}</TableCell>
                         <TableCell>{challenge.duration}s</TableCell>
                         <TableCell>
-                          <Badge variant={challenge.isFree ? 'secondary' : 'default'}>
-                            {challenge.isFree ? 'Free' : 'Premium'}
+                          <Badge
+                            variant={challenge.isFree ? "secondary" : "default"}
+                          >
+                            {challenge.isFree ? "Free" : "Premium"}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -405,7 +501,10 @@ export function TeamDetailsPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-4 text-gray-500">
+                      <TableCell
+                        colSpan={5}
+                        className="text-center py-4 text-gray-500"
+                      >
                         No challenges yet
                       </TableCell>
                     </TableRow>
@@ -428,28 +527,73 @@ export function TeamDetailsPage() {
         <DialogContent className="max-w-4xl max-h-[85vh] p-0">
           <ScrollArea className="max-h-[85vh] p-6">
             <DialogHeader>
-              <DialogTitle>
-                {editingChallenge ? 'Edit Challenge' : 'Create New Challenge'}
-              </DialogTitle>
+              <DialogTitle>Create Challenge</DialogTitle>
             </DialogHeader>
-            <ChallengeForm
-              initialData={editingChallenge || undefined}
-              onSubmit={editingChallenge ? handleUpdateChallenge : handleCreateChallenge}
-              onCancel={() => {
-                setShowChallengeForm(false);
-                setEditingChallenge(null);
-              }}
-            />
+
+            {/* Check if your ChallengeForm has its own tabs structure and integrate with it */}
+            {editingChallenge ? (
+              // When editing, just show the form directly without tabs
+              <ChallengeForm
+                initialData={editingChallenge}
+                onSubmit={handleUpdateChallenge}
+                onCancel={() => {
+                  setShowChallengeForm(false);
+                  setEditingChallenge(null);
+                }}
+              />
+            ) : (
+              // When creating new, show tabs with all three options
+              <Tabs defaultValue="manual" className="mt-4">
+                <TabsList className="grid grid-cols-2 mb-6">
+                  <TabsTrigger value="manual">Create new</TabsTrigger>
+                  <TabsTrigger value="import">Import from Public</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="ai" className="space-y-4">
+                  {/* AI Generation content */}
+                  <div className="space-y-4">
+                    <textarea
+                      className="w-full min-h-[100px] p-3 border rounded-md"
+                      placeholder="Add any specific requirements or context for the AI generator..."
+                    />
+                    <Button className="w-full">Generate with AI</Button>
+                    <div className="p-4 bg-gray-50 rounded-md text-sm">
+                      Click the button above to generate a challenge using AI.
+                      The generated challenge will include realistic scenarios,
+                      product details, and training parameters.
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="manual">
+                  {/* Use the ChallengeForm but possibly with a prop to avoid showing its own tabs */}
+                  <ChallengeForm
+                    initialData={undefined}
+                    onSubmit={handleCreateChallenge}
+                    onCancel={() => setShowChallengeForm(false)}
+                    hideInternalTabs={true} // Add this prop if your ChallengeForm has this option
+                  />
+                </TabsContent>
+
+                <TabsContent value="import">
+                  <ChallengeImportTab onImport={handleImportChallenge} />
+                </TabsContent>
+              </Tabs>
+            )}
           </ScrollArea>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!challengeToDelete} onOpenChange={() => setChallengeToDelete(null)}>
+      <AlertDialog
+        open={!!challengeToDelete}
+        onOpenChange={() => setChallengeToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Challenge</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this challenge? This action cannot be undone.
+              Are you sure you want to delete this challenge? This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

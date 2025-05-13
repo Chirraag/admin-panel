@@ -1,15 +1,20 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { TeamDocument } from '@/types/team';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Pencil, X, Check, Upload } from 'lucide-react';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { toast } from 'sonner';
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Team } from "@/types/team";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Pencil, X, Check, Upload } from "lucide-react";
+import { storage } from "@/lib/firebase";
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
+import { toast } from "sonner";
 import {
   Form,
   FormControl,
@@ -17,53 +22,68 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
+} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
+
+import { isSquareImage } from "@/lib/utils";
 
 const CATEGORIES = [
-  'SaaS Sales',
-  'Real Estate',
-  'Insurance',
-  'Retail',
-  'Healthcare',
-  'Financial Services',
-  'Technology',
-  'Education',
-  'Other'
+  "SaaS Sales",
+  "Real Estate",
+  "Insurance",
+  "Retail",
+  "Healthcare",
+  "Financial Services",
+  "Technology",
+  "Education",
+  "Other",
 ] as const;
 
 const detailsSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  description: z.string().min(1, 'Description is required'),
+  name: z.string().min(1, "Name is required"),
+  description: z.string().min(1, "Description is required"),
   category: z.enum(CATEGORIES),
-  website: z.string().url('Invalid website URL'),
-  team_leader_email: z.string().email('Invalid email address'),
+  website: z.string().url("Invalid website URL"),
   company_logo: z.string().optional(),
   social_media: z.object({
-    youtube: z.string().url('Invalid YouTube URL').optional().or(z.literal('')),
-    twitter: z.string().min(1, 'Twitter handle is required').optional().or(z.literal('')),
-    instagram: z.string().min(1, 'Instagram handle is required').optional().or(z.literal('')),
-    tiktok: z.string().min(1, 'TikTok handle is required').optional().or(z.literal('')),
+    youtube: z.string().url("Invalid YouTube URL").optional().or(z.literal("")),
+    twitter: z
+      .string()
+      .min(1, "Twitter handle is required")
+      .optional()
+      .or(z.literal("")),
+    instagram: z
+      .string()
+      .min(1, "Instagram handle is required")
+      .optional()
+      .or(z.literal("")),
+    tiktok: z
+      .string()
+      .min(1, "TikTok handle is required")
+      .optional()
+      .or(z.literal("")),
   }),
-  customers_desc: z.string().min(1, 'Customer description is required'),
-  offerings_desc: z.string().min(1, 'Offerings description is required'),
-  objections: z.array(z.string()),
-  touchpoints: z.array(z.string()),
+  customers_desc: z.string().min(1, "Customer description is required"),
+  offerings_desc: z.string().min(1, "Offerings description is required"),
 });
 
 interface TeamDetailsFormProps {
-  team: TeamDocument;
-  onSave: (data: z.infer<typeof detailsSchema>) => Promise<void>;
+  team: Team;
+  onSave: (data: Partial<Team>) => Promise<void>;
   defaultEditMode?: boolean;
 }
 
-export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamDetailsFormProps) {
+export function TeamDetailsForm({
+  team,
+  onSave,
+  defaultEditMode = false,
+}: TeamDetailsFormProps) {
   const [isEditing, setIsEditing] = useState(defaultEditMode);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -71,49 +91,67 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
   const form = useForm<z.infer<typeof detailsSchema>>({
     resolver: zodResolver(detailsSchema),
     defaultValues: {
-      name: team.name || '',
-      description: team.description || '',
-      category: (team.category as any) || 'SaaS Sales',
-      website: team.website || '',
-      team_leader_email: team.team_leader_email || '',
-      company_logo: team.company_logo || '',
-      customers_desc: team.customers_desc || '',
-      offerings_desc: team.offerings_desc || '',
-      objections: team.objections || [],
-      touchpoints: team.touchpoints || [],
+      name: team.name || "",
+      description: team.description || "",
+      category: (team.category as any) || "SaaS Sales",
+      website: team.website || "",
+      company_logo: team.company_logo || "",
+      customers_desc: team.customers_desc || "",
+      offerings_desc: team.offerings_desc || "",
       social_media: {
-        youtube: team.social_media?.youtube || '',
-        twitter: team.social_media?.twitter || '',
-        instagram: team.social_media?.instagram || '',
-        tiktok: team.social_media?.tiktok || '',
+        youtube: team.social_media?.youtube || "",
+        twitter: team.social_media?.twitter || "",
+        instagram: team.social_media?.instagram || "",
+        tiktok: team.social_media?.tiktok || "",
       },
     },
   });
 
-  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       setUploadingLogo(true);
 
+      // Validate image type
+      if (!file.type.startsWith("image/")) {
+        toast.error("Please select an image file");
+        return;
+      }
+
+      // Validate image size
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error("Image size should be under 2 MB");
+        return;
+      }
+
+      // Check if the image is square
+      const isSquare = await isSquareImage(file);
+      if (!isSquare) {
+        toast.error("Please upload a square image");
+        return;
+      }
+
       // Create a reference to the file in Firebase Storage
       const storageRef = ref(storage, `teams/logos/${Date.now()}-${file.name}`);
-      
+
       // Upload the file
       await uploadBytes(storageRef, file);
-      
+
       // Get the download URL
       const url = await getDownloadURL(storageRef);
-      
-      form.setValue('company_logo', url);
-      toast.success('Logo uploaded successfully');
+
+      form.setValue("company_logo", url);
+      toast.success("Logo uploaded successfully");
     } catch (error) {
-      console.error('Error uploading logo:', error);
-      toast.error('Failed to upload logo');
+      console.error("Error uploading logo:", error);
+      toast.error("Failed to upload logo");
     } finally {
       setUploadingLogo(false);
-      event.target.value = '';
+      event.target.value = "";
     }
   };
 
@@ -162,24 +200,28 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
             <div>
               <h3 className="text-sm font-medium text-gray-500">Website</h3>
               <p className="mt-1">
-                <a href={team.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                <a
+                  href={team.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
                   {team.website}
                 </a>
               </p>
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-gray-500">Team Leader</h3>
-              <p className="mt-1">{team.team_leader_email}</p>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-medium text-gray-500">Customer Description</h3>
+              <h3 className="text-sm font-medium text-gray-500">
+                Customer Description
+              </h3>
               <p className="mt-1">{team.customers_desc}</p>
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-gray-500">Offerings Description</h3>
+              <h3 className="text-sm font-medium text-gray-500">
+                Offerings Description
+              </h3>
               <p className="mt-1">{team.offerings_desc}</p>
             </div>
           </div>
@@ -187,11 +229,13 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
           <div className="space-y-6">
             {team.company_logo && (
               <div>
-                <h3 className="text-sm font-medium text-gray-500">Company Logo</h3>
+                <h3 className="text-sm font-medium text-gray-500">
+                  Company Logo
+                </h3>
                 <div className="mt-2 relative aspect-square w-40 rounded-lg overflow-hidden border">
-                  <img 
-                    src={team.company_logo} 
-                    alt={team.name} 
+                  <img
+                    src={team.company_logo}
+                    alt={team.name}
                     className="w-full h-full object-contain"
                   />
                 </div>
@@ -199,7 +243,9 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
             )}
 
             <div>
-              <h3 className="text-sm font-medium text-gray-500">Social Media</h3>
+              <h3 className="text-sm font-medium text-gray-500">
+                Social Media
+              </h3>
               <div className="mt-2 space-y-2">
                 {team.social_media?.instagram && (
                   <p>Instagram: @{team.social_media.instagram}</p>
@@ -234,10 +280,7 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
             <X className="h-4 w-4 mr-2" />
             Cancel
           </Button>
-          <Button
-            type="submit"
-            disabled={isSubmitting}
-          >
+          <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -323,20 +366,6 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
 
             <FormField
               control={form.control}
-              name="team_leader_email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Team Leader Email</FormLabel>
-                  <FormControl>
-                    <Input {...field} type="email" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="customers_desc"
               render={({ field }) => (
                 <FormItem>
@@ -383,7 +412,9 @@ export function TeamDetailsForm({ team, onSave, defaultEditMode = false }: TeamD
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => document.getElementById('logo-upload')?.click()}
+                        onClick={() =>
+                          document.getElementById("logo-upload")?.click()
+                        }
                         disabled={uploadingLogo}
                         className="w-full"
                       >

@@ -1,52 +1,49 @@
-import { Timestamp } from 'firebase/firestore';
+// Define member roles
+export type MemberRole = "Leader" | "Member";
 
-export interface SocialMediaLinks {
-  instagram?: string;
-  tiktok?: string;
-  youtube?: string;
-  twitter?: string;
-}
-
+// Simplified Team Member structure
 export interface TeamMember {
-  id: string;
-  email: string;
-  user_id: string;
-  uuid: string;
-  joined_at: Timestamp;
+  member_id: string; // UUID of the user (references user document ID)
+  email: string; // User's email
+  user_name: string;
+  role: MemberRole; // Role in the team
+  joined_at: any; // Timestamp
 }
 
-export interface TeamDocument {
-  id: string;
+// Unified Team interface - used for both form and database
+export interface Team {
+  id?: string; // Document ID (only present for existing teams)
   name: string;
   description: string;
-  company_logo?: string;
-  team_leader_email: string;
+  company_logo: string;
   website: string;
   category: string;
   customers_desc: string;
   offerings_desc: string;
-  objections: string[];
-  touchpoints: string[];
-  social_media?: SocialMediaLinks;
-  status: 'Pending' | 'Approved' | 'Declined';
-  created_at?: Timestamp;
-  updated_at?: Timestamp;
+  social_media: {
+    instagram?: string;
+    tiktok?: string;
+    youtube?: string;
+    twitter?: string;
+  };
+  members: TeamMember[];
+
+  // Fields that might not be present during form input but added later
+  status?: "Pending" | "Approved" | "Declined";
   team_code?: string;
-  members?: TeamMember[];
-  onApprove?: (team: TeamDocument) => void;
-  onDecline?: (team: TeamDocument) => void;
-}
+  dateAt?: any; // Timestamp
+  updated_at?: any; // Timestamp
+  knowledge_base?: Array<{
+    id: string;
+    name: string;
+    url: string;
+    type: string;
+  }>;
+  objections?: string[];
+  touchpoints?: string[];
 
-export interface TeamFormData {
-  name: string;
-  description: string;
-  company_logo?: string;
-  team_leader_email: string;
-  website: string;
-  category: string;
-  customers_desc: string;
-  offerings_desc: string;
-  objections: string[];
-  touchpoints: string[];
-  social_media?: SocialMediaLinks;
+  // UI action handlers (not in DB, only in component state)
+  onApprove?: (team: Team) => void;
+  onDecline?: (team: Team) => void;
+  onView?: (team: Team) => void;
 }
