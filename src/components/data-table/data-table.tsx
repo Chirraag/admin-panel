@@ -1,3 +1,6 @@
+// In src/components/data-table/data-table.tsx
+// Make sure all these imports are at the top
+import * as React from "react";
 import {
   ColumnDef,
   flexRender,
@@ -6,7 +9,8 @@ import {
   getPaginationRowModel,
   SortingState,
   getSortedRowModel,
-} from '@tanstack/react-table';
+  PaginationState, // Add this import
+} from "@tanstack/react-table";
 import {
   Table,
   TableBody,
@@ -14,10 +18,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
-import { useState, useEffect } from 'react';
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight, ArrowUpDown } from "lucide-react";
+import { useState, useEffect } from "react";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -34,6 +38,13 @@ export function DataTable<TData, TValue>({
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  // Explicitly manage pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: pageSize,
+  });
+
+  // Update table whenever pagination or data changes
   const table = useReactTable({
     data,
     columns,
@@ -41,19 +52,32 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
+    onPaginationChange: setPagination, // Important: connect the state setter
+    manualPagination: false, // Set to true only if YOU control pagination from outside
     state: {
       sorting,
-      pagination: {
-        pageSize: pageSize,
-        pageIndex: 0,
-      },
+      pagination, // Connect the state
     },
   });
 
-  // Reset to first page when pageSize changes
+  // Reset to first page when data or pageSize changes
   useEffect(() => {
-    table.setPageIndex(0);
-  }, [pageSize, table]);
+    setPagination((prev) => ({
+      ...prev,
+      pageSize: pageSize,
+      pageIndex: 0,
+    }));
+  }, [data.length, pageSize]);
+
+  // Handle page change for debugging
+  const handlePageChange = (newPageIndex: number) => {
+    // Log the current state for debugging
+    console.log("Current page:", table.getState().pagination.pageIndex);
+    console.log("Changing to page:", newPageIndex);
+
+    // Update the table's page index
+    table.setPageIndex(newPageIndex);
+  };
 
   return (
     <div className="space-y-4">
@@ -63,22 +87,22 @@ export function DataTable<TData, TValue>({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead 
-                    key={header.id} 
+                  <TableHead
+                    key={header.id}
                     className="bg-gray-50 text-black font-medium"
                   >
                     {header.isPlaceholder ? null : (
                       <div
                         {...{
                           className: header.column.getCanSort()
-                            ? 'cursor-pointer select-none flex items-center'
-                            : '',
+                            ? "cursor-pointer select-none flex items-center"
+                            : "",
                           onClick: header.column.getToggleSortingHandler(),
                         }}
                       >
                         {flexRender(
                           header.column.columnDef.header,
-                          header.getContext()
+                          header.getContext(),
                         )}
                         {header.column.getCanSort() && (
                           <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -94,17 +118,22 @@ export function DataTable<TData, TValue>({
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => {
                 const data = row.original as any;
-                const isClickable = !data.status || data.status === 'Approved';
-                
+                const isClickable = !data.status || data.status === "Approved";
+
                 return (
-                  <TableRow 
-                    key={row.id} 
-                    className={isClickable ? "hover:bg-gray-50 cursor-pointer" : ""}
+                  <TableRow
+                    key={row.id}
+                    className={
+                      isClickable ? "hover:bg-gray-50 cursor-pointer" : ""
+                    }
                     onClick={() => isClickable && onRowClick?.(row.original)}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="text-gray-600">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -112,7 +141,10 @@ export function DataTable<TData, TValue>({
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-gray-500">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center text-gray-500"
+                >
                   No results.
                 </TableCell>
               </TableRow>
@@ -130,19 +162,23 @@ export function DataTable<TData, TValue>({
             <Button
               variant="outline"
               className="h-8 w-8 p-0 border-gray-100"
-              onClick={() => table.previousPage()}
+              onClick={() =>
+                handlePageChange(table.getState().pagination.pageIndex - 1)
+              }
               disabled={!table.getCanPreviousPage()}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <div className="flex items-center justify-center text-sm font-medium text-gray-600">
-              Page {table.getState().pagination.pageIndex + 1} of{' '}
-              {table.getPageCount()}
+              Page {table.getState().pagination.pageIndex + 1} of{" "}
+              {table.getPageCount() || 1}
             </div>
             <Button
               variant="outline"
               className="h-8 w-8 p-0 border-gray-100"
-              onClick={() => table.nextPage()}
+              onClick={() =>
+                handlePageChange(table.getState().pagination.pageIndex + 1)
+              }
               disabled={!table.getCanNextPage()}
             >
               <ChevronRight className="h-4 w-4" />

@@ -222,50 +222,86 @@ export function TeamDetailsPage() {
     setShowChallengeForm(true);
   };
 
+  // Replace the handleUpdateDetails function in src/pages/teams/team-details.tsx
+
+  // Complete rewrite of the handleUpdateDetails function for src/pages/teams/team-details.tsx
+
+  // Proper implementation of handleUpdateDetails function to add to TeamDetailsPage
+  // Add this function inside the TeamDetailsPage component
+
   const handleUpdateDetails = async (data: any) => {
-    if (!team) return;
+    if (!team) {
+      toast.error("No team data available");
+      return;
+    }
 
     try {
-      // Create the update object with all fields
-      const updateData = {
-        name: data.name,
-        description: data.description,
-        category: data.category,
-        website: data.website,
-        team_leader_email: data.team_leader_email,
-        company_logo: data.company_logo, // Make sure this is included
-        customers_desc: data.customers_desc, // Make sure this is included
-        offerings_desc: data.offerings_desc, // Make sure this is included
-        social_media: data.social_media,
-        updated_at: serverTimestamp(),
-        // Only include knowledge_base if it exists in data
-        ...(data.knowledge_base && {
-          knowledge_base: data.knowledge_base.map((file: any) => ({
-            id: file.id,
-            name: file.name,
-            url: file.url,
-            type: file.type,
-          })),
-        }),
+      console.log("Updating team with data:", JSON.stringify(data, null, 2));
+      console.log("Current team ID:", team.id);
+
+      // Create a clean update object with explicit type casting
+      const updateData: Record<string, any> = {
+        name: data.name?.toString() || "",
+        description: data.description?.toString() || "",
+        category: data.category?.toString() || "SaaS Sales",
+        website: data.website?.toString() || "",
+        customers_desc: data.customers_desc?.toString() || "",
+        offerings_desc: data.offerings_desc?.toString() || "",
       };
 
-      // Update the document
-      await updateDoc(doc(db, "teams", team.id), updateData);
+      // Handle the team_leader_email field specifically
+      // Only include it if it exists in the team AND is not undefined
+      if (team.team_leader_email !== undefined) {
+        updateData.team_leader_email = team.team_leader_email;
+      }
 
-      // Update local state
-      setTeam((prev) =>
-        prev
-          ? {
-              ...prev,
-              ...updateData,
-            }
-          : null,
-      );
+      // Handle social media separately to ensure correct structure
+      updateData.social_media = {
+        instagram: data.social_media?.instagram?.toString() || "",
+        tiktok: data.social_media?.tiktok?.toString() || "",
+        youtube: data.social_media?.youtube?.toString() || "",
+        twitter: data.social_media?.twitter?.toString() || "",
+      };
+
+      // Only include company_logo if it exists and is a valid string
+      if (data.company_logo && typeof data.company_logo === "string") {
+        updateData.company_logo = data.company_logo;
+      }
+
+      // Add updated_at timestamp
+      updateData.updated_at = serverTimestamp();
+
+      console.log("Clean update data:", JSON.stringify(updateData, null, 2));
+
+      // Ensure we remove any undefined values before updating
+      Object.keys(updateData).forEach((key) => {
+        if (updateData[key] === undefined) {
+          console.log(`Removing undefined field: ${key}`);
+          delete updateData[key];
+        }
+      });
+
+      // Update the document
+      const docRef = doc(db, "teams", team.id);
+      await updateDoc(docRef, updateData);
+
+      // Update local state with the same data we sent to Firestore
+      setTeam((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          ...updateData,
+          // Convert serverTimestamp back to a regular date for the local state
+          updated_at: new Date(),
+        };
+      });
 
       toast.success("Team details updated successfully");
     } catch (error) {
       console.error("Error updating team details:", error);
-      toast.error("Failed to update team details");
+      toast.error(
+        `Failed to update team details: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     }
   };
 

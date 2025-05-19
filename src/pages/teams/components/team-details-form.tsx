@@ -155,11 +155,48 @@ export function TeamDetailsForm({
     }
   };
 
+  // In src/pages/teams/components/team-details-form.tsx
+  // Find the handleSubmit function and modify it to ensure the data is properly formatted
+  // In src/pages/teams/components/team-details-form.tsx
+  // Replace the handleSubmit function with this improved version
+
   const handleSubmit = async (data: z.infer<typeof detailsSchema>) => {
     setIsSubmitting(true);
     try {
-      await onSave(data);
+      console.log("Form data before submission:", data);
+
+      // Step 1: Create a clean data object with explicit properties
+      const submissionData = {
+        name: data.name || "",
+        description: data.description || "",
+        category: data.category || "SaaS Sales",
+        website: data.website || "",
+        customers_desc: data.customers_desc || "",
+        offerings_desc: data.offerings_desc || "",
+        // Include company_logo only if it exists
+        ...(data.company_logo ? { company_logo: data.company_logo } : {}),
+        // Ensure social_media is properly structured
+        social_media: {
+          instagram: data.social_media?.instagram || "",
+          tiktok: data.social_media?.tiktok || "",
+          youtube: data.social_media?.youtube || "",
+          twitter: data.social_media?.twitter || "",
+        },
+      };
+
+      console.log("Cleaned submission data:", submissionData);
+
+      // Step 2: Call the parent's onSave function with our cleaned data
+      await onSave(submissionData);
+
+      // Step 3: Exit edit mode on success
       setIsEditing(false);
+    } catch (error) {
+      console.error("Form submission error:", error);
+      // Show a local error message
+      toast.error(
+        "Form submission failed. Please check the console for details.",
+      );
     } finally {
       setIsSubmitting(false);
     }
