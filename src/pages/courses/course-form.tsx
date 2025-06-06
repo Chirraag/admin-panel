@@ -1,15 +1,15 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { CourseFormData, Video, VideoFormData } from '@/types/course';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Upload } from 'lucide-react';
-import { uploadVideo } from '@/lib/s3';
-import { VideoList } from './components/video-list';
-import { VideoForm } from './components/video-form';
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { CourseFormData, Video, VideoFormData } from "@/types/course";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Upload } from "lucide-react";
+import { uploadVideo } from "@/lib/s3";
+import { VideoList } from "./components/video-list";
+import { VideoForm } from "./components/video-form";
 import {
   Form,
   FormControl,
@@ -17,22 +17,22 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { toast } from 'sonner';
+} from "@/components/ui/form";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Progress } from '@/components/ui/progress';
+} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 
 const courseSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
-  description: z.string().min(1, 'Description is required'),
-  author_name: z.string().min(1, 'Author name is required'),
-  wall_image: z.string().min(1, 'Course wall image is required'),
-  course_credits: z.number().min(0, 'Credits must be a positive number'),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().min(1, "Description is required"),
+  author_name: z.string().min(1, "Author name is required"),
+  wall_image: z.string().min(1, "Course wall image is required"),
+  course_credits: z.number().min(0, "Credits must be a positive number"),
 });
 
 interface CourseFormProps {
@@ -42,40 +42,51 @@ interface CourseFormProps {
   onCancel: () => void;
 }
 
-export function CourseForm({ initialData, videos = [], onSubmit, onCancel }: CourseFormProps) {
+export function CourseForm({
+  initialData,
+  videos = [],
+  onSubmit,
+  onCancel,
+}: CourseFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [courseVideos, setCourseVideos] = useState<Video[]>(videos);
   const [uploading, setUploading] = useState(false);
   const [showVideoForm, setShowVideoForm] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ file: File; progress: number; url: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    file: File;
+    progress: number;
+    url: string;
+  } | null>(null);
   const [uploadingWallImage, setUploadingWallImage] = useState(false);
 
   const form = useForm<CourseFormData>({
     resolver: zodResolver(courseSchema),
     defaultValues: {
-      title: '',
-      description: '',
-      author_name: '',
-      wall_image: '',
+      title: "",
+      description: "",
+      author_name: "",
+      wall_image: "",
       course_credits: 0,
       ...initialData,
     },
   });
 
-  const handleVideoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       setUploading(true);
-      setUploadProgress({ file, progress: 0, url: '' });
+      setUploadProgress({ file, progress: 0, url: "" });
 
       const url = await uploadVideo(file, (progress) => {
-        setUploadProgress(prev => prev ? { ...prev, progress } : null);
+        setUploadProgress((prev) => (prev ? { ...prev, progress } : null));
       });
 
       // Create a temporary video element to get duration
-      const video = document.createElement('video');
+      const video = document.createElement("video");
       video.src = url;
 
       const getDuration = new Promise<number>((resolve) => {
@@ -86,60 +97,60 @@ export function CourseForm({ initialData, videos = [], onSubmit, onCancel }: Cou
 
       const video_duration = await getDuration;
 
-      setUploadProgress(prev => prev ? { ...prev, url } : null);
+      setUploadProgress((prev) => (prev ? { ...prev, url } : null));
       setShowVideoForm(true);
 
       const tempVideo: Video = {
         id: crypto.randomUUID(),
         title: file.name.replace(/\.[^/.]+$/, ""),
-        description: '',
+        description: "",
         url,
         video_duration,
-        thumbnail: '',
+        thumbnail: "",
         order: courseVideos.length,
         created_at: new Date() as any,
       };
 
-      setCourseVideos(prev => [...prev, tempVideo]);
+      setCourseVideos((prev) => [...prev, tempVideo]);
     } catch (error) {
-      console.error('Error uploading video:', error);
-      toast.error('Failed to upload video');
+      console.error("Error uploading video:", error);
+      toast.error("Failed to upload video");
       setUploadProgress(null);
     } finally {
       setUploading(false);
-      event.target.value = '';
+      event.target.value = "";
     }
   };
 
-  const handleWallImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleWallImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       setUploadingWallImage(true);
       const url = await uploadVideo(file);
-      form.setValue('wall_image', url);
-      toast.success('Wall image uploaded successfully');
+      form.setValue("wall_image", url);
+      toast.success("Wall image uploaded successfully");
     } catch (error) {
-      console.error('Error uploading wall image:', error);
-      toast.error('Failed to upload wall image');
+      console.error("Error uploading wall image:", error);
+      toast.error("Failed to upload wall image");
     } finally {
       setUploadingWallImage(false);
-      event.target.value = '';
+      event.target.value = "";
     }
   };
 
   const handleVideoFormSubmit = (data: VideoFormData) => {
-    setCourseVideos(prev => {
+    setCourseVideos((prev) => {
       const lastVideo = prev[prev.length - 1];
-      return prev.map(video => 
-        video.id === lastVideo.id 
-          ? { ...video, ...data }
-          : video
+      return prev.map((video) =>
+        video.id === lastVideo.id ? { ...video, ...data } : video,
       );
     });
     setShowVideoForm(false);
-    toast.success('Video details updated successfully');
+    toast.success("Video details updated successfully");
   };
 
   const handleSubmit = async (data: CourseFormData) => {
@@ -153,22 +164,24 @@ export function CourseForm({ initialData, videos = [], onSubmit, onCancel }: Cou
   };
 
   const handleVideoReorder = (reorderedVideos: Video[]) => {
-    setCourseVideos(prev => reorderedVideos.map((video, index) => ({
-      ...video,
-      order: index
-    })));
+    setCourseVideos((prev) =>
+      reorderedVideos.map((video, index) => ({
+        ...video,
+        order: index,
+      })),
+    );
   };
 
   const handleVideoDelete = (videoId: string) => {
-    setCourseVideos(courseVideos.filter(v => v.id !== videoId));
+    setCourseVideos(courseVideos.filter((v) => v.id !== videoId));
   };
 
   const handleVideoUpdate = (videoId: string, data: VideoFormData) => {
-    setCourseVideos(courseVideos.map(video => 
-      video.id === videoId 
-        ? { ...video, ...data }
-        : video
-    ));
+    setCourseVideos(
+      courseVideos.map((video) =>
+        video.id === videoId ? { ...video, ...data } : video,
+      ),
+    );
   };
 
   return (
@@ -225,11 +238,11 @@ export function CourseForm({ initialData, videos = [], onSubmit, onCancel }: Cou
                 <FormItem>
                   <FormLabel>Credits</FormLabel>
                   <FormControl>
-                    <Input 
-                      type="number" 
+                    <Input
+                      type="number"
                       {...field}
                       value={field.value || 0}
-                      onChange={e => field.onChange(Number(e.target.value))}
+                      onChange={(e) => field.onChange(Number(e.target.value))}
                     />
                   </FormControl>
                   <FormMessage />
@@ -257,7 +270,9 @@ export function CourseForm({ initialData, videos = [], onSubmit, onCancel }: Cou
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => document.getElementById('wall-image-upload')?.click()}
+                      onClick={() =>
+                        document.getElementById("wall-image-upload")?.click()
+                      }
                       disabled={isSubmitting || uploadingWallImage}
                       className="w-full"
                     >
@@ -305,7 +320,9 @@ export function CourseForm({ initialData, videos = [], onSubmit, onCancel }: Cou
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => document.getElementById('video-upload')?.click()}
+                  onClick={() =>
+                    document.getElementById("video-upload")?.click()
+                  }
                   disabled={uploading}
                   className="w-full"
                 >
@@ -350,10 +367,12 @@ export function CourseForm({ initialData, videos = [], onSubmit, onCancel }: Cou
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {initialData ? 'Updating...' : 'Creating...'}
+                  {initialData ? "Updating..." : "Creating..."}
                 </>
+              ) : initialData ? (
+                "Update Course"
               ) : (
-                initialData ? 'Update Course' : 'Create Course'
+                "Create Course"
               )}
             </Button>
           </div>
@@ -361,22 +380,25 @@ export function CourseForm({ initialData, videos = [], onSubmit, onCancel }: Cou
       </Form>
 
       <Dialog open={showVideoForm} onOpenChange={setShowVideoForm}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Video Details</DialogTitle>
           </DialogHeader>
-          {uploadProgress && (
-            <VideoForm
-              defaultValues={{
-                title: uploadProgress.file.name.replace(/\.[^/.]+$/, ""),
-                description: '',
-                thumbnail: '',
-              }}
-              videoUrl={uploadProgress.url}
-              onSubmit={handleVideoFormSubmit}
-              onCancel={() => setShowVideoForm(false)}
-            />
-          )}
+
+          <div className="space-y-6">
+            {uploadProgress && (
+              <VideoForm
+                defaultValues={{
+                  title: uploadProgress.file.name.replace(/\.[^/.]+$/, ""),
+                  description: "",
+                  thumbnail: "",
+                }}
+                videoUrl={uploadProgress.url}
+                onSubmit={handleVideoFormSubmit}
+                onCancel={() => setShowVideoForm(false)}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

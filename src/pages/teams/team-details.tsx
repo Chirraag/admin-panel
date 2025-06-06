@@ -832,43 +832,45 @@ export function TeamDetailsPage() {
             </DialogTitle>
           </DialogHeader>
 
-          <ScrollArea className="max-h-[calc(90vh-8rem)] pr-6">
-            <div className="space-y-6">
-              {editingCourse ? (
-                // When editing, show the form directly
-                <CourseForm
-                  initialData={editingCourse}
-                  videos={editingCourse.videos || []}
-                  onSubmit={handleUpdateCourse}
-                  onCancel={() => {
-                    setShowCourseForm(false);
-                    setEditingCourse(null);
-                  }}
-                />
-              ) : (
-                // When creating new, show tabs with create and import options
-                <Tabs defaultValue="create" className="w-full">
-                  <TabsList className="grid grid-cols-2 mb-6">
-                    <TabsTrigger value="create">Create New</TabsTrigger>
-                    <TabsTrigger value="import">
-                      Import from Library
-                    </TabsTrigger>
-                  </TabsList>
+          {editingCourse ? (
+            // When editing, show the form directly with scrolling
+            <ScrollArea className="max-h-[calc(90vh-6rem)] pr-6">
+              <CourseForm
+                initialData={editingCourse}
+                videos={editingCourse.videos || []}
+                onSubmit={handleUpdateCourse}
+                onCancel={() => {
+                  setShowCourseForm(false);
+                  setEditingCourse(null);
+                }}
+              />
+            </ScrollArea>
+          ) : (
+            // When creating new, show tabs with proper scrolling
+            <div className="max-h-[calc(90vh-6rem)]">
+              <Tabs defaultValue="create" className="h-full">
+                <TabsList className="grid grid-cols-2 mb-4">
+                  <TabsTrigger value="create">Create New</TabsTrigger>
+                  <TabsTrigger value="import">Import from Library</TabsTrigger>
+                </TabsList>
 
-                  <TabsContent value="create">
+                <TabsContent value="create" className="mt-0">
+                  <ScrollArea className="h-[calc(90vh-12rem)] pr-6">
                     <CourseForm
                       onSubmit={handleCreateCourse}
                       onCancel={() => setShowCourseForm(false)}
                     />
-                  </TabsContent>
+                  </ScrollArea>
+                </TabsContent>
 
-                  <TabsContent value="import">
+                <TabsContent value="import" className="mt-0">
+                  <ScrollArea className="h-[calc(90vh-12rem)] pr-6">
                     <CourseImportTab onImport={handleImportCourse} />
-                  </TabsContent>
-                </Tabs>
-              )}
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
             </div>
-          </ScrollArea>
+          )}
         </DialogContent>
       </Dialog>
 
