@@ -6,7 +6,7 @@ import { CourseFormData, Video, VideoFormData } from "@/types/course";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2, Upload, Youtube, Plus } from "lucide-react";
 import { uploadVideo } from "@/lib/s3";
 import { VideoList } from "./components/video-list";
 import { VideoForm } from "./components/video-form";
@@ -18,6 +18,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -58,6 +59,11 @@ export function CourseForm({
     url: string;
   } | null>(null);
   const [uploadingWallImage, setUploadingWallImage] = useState(false);
+  const [videoAddType, setVideoAddType] = useState<"upload" | "youtube">(
+    "upload",
+  );
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [addingYoutube, setAddingYoutube] = useState(false);
 
   const form = useForm<CourseFormData>({
     resolver: zodResolver(courseSchema),
@@ -70,6 +76,22 @@ export function CourseForm({
       ...initialData,
     },
   });
+
+  const isValidYouTubeUrl = (url: string) => {
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
+    return youtubeRegex.test(url);
+  };
+
+  const extractVideoTitle = (url: string) => {
+    try {
+      const urlObj = new URL(url);
+      const videoId =
+        urlObj.searchParams.get("v") || urlObj.pathname.split("/").pop();
+      return `YouTube Video ${videoId}`;
+    } catch {
+      return "YouTube Video";
+    }
+  };
 
   const handleVideoUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -119,6 +141,43 @@ export function CourseForm({
     } finally {
       setUploading(false);
       event.target.value = "";
+    }
+  };
+
+  const handleYouTubeAdd = async () => {
+    if (!youtubeUrl.trim()) {
+      toast.error("Please enter a YouTube URL");
+      return;
+    }
+
+    if (!isValidYouTubeUrl(youtubeUrl)) {
+      toast.error("Please enter a valid YouTube URL");
+      return;
+    }
+
+    try {
+      setAddingYoutube(true);
+
+      const tempVideo: Video = {
+        id: crypto.randomUUID(),
+        title: extractVideoTitle(youtubeUrl),
+        description: "",
+        url: youtubeUrl,
+        video_duration: 0, // YouTube videos don't need duration from our side
+        thumbnail: "", // Will be set in the form
+        order: courseVideos.length,
+        created_at: new Date() as any,
+      };
+
+      setCourseVideos((prev) => [...prev, tempVideo]);
+      setShowVideoForm(true);
+      setYoutubeUrl("");
+      toast.success("YouTube video added");
+    } catch (error) {
+      console.error("Error adding YouTube video:", error);
+      toast.error("Failed to add YouTube video");
+    } finally {
+      setAddingYoutube(false);
     }
   };
 
@@ -182,6 +241,37 @@ export function CourseForm({
         video.id === videoId ? { ...video, ...data } : video,
       ),
     );
+  };
+
+  const getCurrentVideo = () => {
+    if (uploadProgress) {
+      return {
+        title: uploadProgress.file.name.replace(/\.[^/.]+$/, ""),
+        description: "",
+        thumbnail: "",
+      };
+    }
+
+    const lastVideo = courseVideos[courseVideos.length - 1];
+    if (lastVideo) {
+      return {
+        title: lastVideo.title,
+        description: lastVideo.description,
+        thumbnail: lastVideo.thumbnail || "",
+      };
+    }
+
+    return {
+      title: "",
+      description: "",
+      thumbnail: "",
+    };
+  };
+
+  const getCurrentVideoUrl = () => {
+    if (uploadProgress) return uploadProgress.url;
+    const lastVideo = courseVideos[courseVideos.length - 1];
+    return lastVideo?.url || "";
   };
 
   return (
@@ -308,48 +398,94 @@ export function CourseForm({
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <h3 className="text-lg font-semibold">Videos</h3>
-              <div className="flex-1">
-                <Input
-                  type="file"
-                  accept="video/*"
-                  onChange={handleVideoUpload}
-                  className="hidden"
-                  id="video-upload"
-                  disabled={uploading}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    document.getElementById("video-upload")?.click()
-                  }
-                  disabled={uploading}
-                  className="w-full"
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Upload Video
-                    </>
-                  )}
-                </Button>
-              </div>
             </div>
 
-            {uploadProgress && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>{uploadProgress.file.name}</span>
-                  <span>{uploadProgress.progress}%</span>
+            {/* Video Upload/YouTube URL Tabs */}
+            <Tabs
+              value={videoAddType}
+              onValueChange={(v) => setVideoAddType(v as "upload" | "youtube")}
+            >
+              <TabsList className="grid grid-cols-2 w-full">
+                <TabsTrigger value="upload">Upload Video</TabsTrigger>
+                <TabsTrigger value="youtube">YouTube URL</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="upload" className="space-y-4">
+                <div className="flex-1">
+                  <Input
+                    type="file"
+                    accept="video/*"
+                    onChange={handleVideoUpload}
+                    className="hidden"
+                    id="video-upload"
+                    disabled={uploading}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      document.getElementById("video-upload")?.click()
+                    }
+                    disabled={uploading}
+                    className="w-full"
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload Video File
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <Progress value={uploadProgress.progress} className="h-2" />
-              </div>
-            )}
+
+                {uploadProgress && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>{uploadProgress.file.name}</span>
+                      <span>{uploadProgress.progress}%</span>
+                    </div>
+                    <Progress value={uploadProgress.progress} className="h-2" />
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="youtube" className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    disabled={addingYoutube}
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleYouTubeAdd}
+                    disabled={addingYoutube || !youtubeUrl.trim()}
+                  >
+                    {addingYoutube ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add YouTube Video
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Enter a YouTube URL to add it as a course video. The video
+                  will be embedded directly without uploading to storage.
+                </p>
+              </TabsContent>
+            </Tabs>
 
             <VideoList
               videos={courseVideos}
@@ -386,18 +522,12 @@ export function CourseForm({
           </DialogHeader>
 
           <div className="space-y-6">
-            {uploadProgress && (
-              <VideoForm
-                defaultValues={{
-                  title: uploadProgress.file.name.replace(/\.[^/.]+$/, ""),
-                  description: "",
-                  thumbnail: "",
-                }}
-                videoUrl={uploadProgress.url}
-                onSubmit={handleVideoFormSubmit}
-                onCancel={() => setShowVideoForm(false)}
-              />
-            )}
+            <VideoForm
+              defaultValues={getCurrentVideo()}
+              videoUrl={getCurrentVideoUrl()}
+              onSubmit={handleVideoFormSubmit}
+              onCancel={() => setShowVideoForm(false)}
+            />
           </div>
         </DialogContent>
       </Dialog>
