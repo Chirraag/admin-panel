@@ -1,12 +1,12 @@
-import { useForm } from 'react-hook-form';
-import { CategoryFormData, VapiFileInfo } from '@/types/category';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
-import { Textarea } from '@/components/ui/textarea';
+import { useForm } from "react-hook-form";
+import { CategoryFormData, VapiFileInfo } from "@/types/category";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Form,
   FormControl,
@@ -14,11 +14,12 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { X, Plus, Upload, Icon as Icons } from 'lucide-react';
-import { uploadVapiFile, deleteVapiFile } from '@/lib/api/vapi';
-import { toast } from 'sonner';
-import { IconSearchDialog } from './icon-search-dialog';
+} from "@/components/ui/form";
+import { X, Plus, Upload, Icon as Icons, Trash2 } from "lucide-react";
+import { uploadVapiFile, deleteVapiFile } from "@/lib/api/vapi";
+import { uploadCategorySvg, deleteStorageImage } from "@/lib/firebase-storage";
+import { toast } from "sonner";
+import { IconSearchDialog } from "./icon-search-dialog";
 
 interface CategoryFormProps {
   initialData?: Partial<CategoryFormData>;
@@ -27,39 +28,98 @@ interface CategoryFormProps {
 }
 
 const categorySchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  description: z.string().min(1, 'Description is required'),
-  category_icon: z.string().min(1, 'Icon is required'),
+  name: z.string().min(1, "Name is required"),
+  description: z.string().min(1, "Description is required"),
+  category_icon: z.string().min(1, "Icon is required"),
+  image_url: z.string().min(1, "SVG icon is required"),
   knowledge_base: z.array(z.any()).optional(),
   knowledge_base_dump: z.string().optional(),
   websites: z.array(z.string()).optional(),
 });
 
-export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormProps) {
+export function CategoryForm({
+  initialData,
+  onSubmit,
+  onCancel,
+}: CategoryFormProps) {
   const [showIconSearch, setShowIconSearch] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingSvg, setIsUploadingSvg] = useState(false);
 
   const form = useForm<CategoryFormData>({
     resolver: zodResolver(categorySchema),
     defaultValues: {
-      name: '',
-      description: '',
-      category_icon: '',
+      name: "",
+      description: "",
+      category_icon: "",
+      image_url: "",
       knowledge_base: [],
-      knowledge_base_dump: '',
+      knowledge_base_dump: "",
       websites: [],
       ...initialData,
     },
   });
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSvgUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate SVG file type
+    if (file.type !== "image/svg+xml") {
+      toast.error("Only SVG files are allowed for category icons");
+      event.target.value = "";
+      return;
+    }
+
+    setIsUploadingSvg(true);
+    try {
+      // Generate a temporary ID for new categories
+      const categoryId = initialData?.name
+        ? initialData.name.toLowerCase().replace(/\s+/g, "-")
+        : `temp-${Date.now()}`;
+
+      const svgUrl = await uploadCategorySvg(file, categoryId);
+      form.setValue("image_url", svgUrl);
+
+      // Clear the input
+      event.target.value = "";
+
+      toast.success("SVG icon uploaded successfully");
+    } catch (error) {
+      console.error("Error uploading SVG:", error);
+      toast.error("Failed to upload SVG icon");
+    } finally {
+      setIsUploadingSvg(false);
+    }
+  };
+
+  const handleRemoveSvg = async () => {
+    const currentSvgUrl = form.getValues("image_url");
+
+    if (currentSvgUrl) {
+      try {
+        await deleteStorageImage(currentSvgUrl);
+        form.setValue("image_url", "");
+        toast.success("SVG icon removed successfully");
+      } catch (error) {
+        console.error("Error removing SVG:", error);
+        toast.error("Failed to remove SVG icon");
+      }
+    }
+  };
+
+  const handleFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       // Upload to Vapi
       const vapiFile = await uploadVapiFile(file);
-      
+
       // Create file info object
       const fileInfo: VapiFileInfo = {
         id: vapiFile.id,
@@ -68,22 +128,22 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
       };
 
       // Update form state with new file info
-      const currentFiles = form.getValues('knowledge_base') || [];
-      form.setValue('knowledge_base', [...currentFiles, fileInfo]);
-      
+      const currentFiles = form.getValues("knowledge_base") || [];
+      form.setValue("knowledge_base", [...currentFiles, fileInfo]);
+
       // Clear the input
-      event.target.value = '';
-      
-      toast.success('File uploaded successfully');
+      event.target.value = "";
+
+      toast.success("File uploaded successfully");
     } catch (error) {
-      console.error('Error uploading file:', error);
-      toast.error('Failed to upload file');
+      console.error("Error uploading file:", error);
+      toast.error("Failed to upload file");
     }
   };
 
   const removeFile = async (index: number) => {
     try {
-      const currentFiles = form.getValues('knowledge_base');
+      const currentFiles = form.getValues("knowledge_base");
       const fileToRemove = currentFiles[index];
 
       if (fileToRemove?.id) {
@@ -93,14 +153,14 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
 
       // Remove from form state
       form.setValue(
-        'knowledge_base',
-        currentFiles.filter((_, i) => i !== index)
+        "knowledge_base",
+        currentFiles.filter((_, i) => i !== index),
       );
-      
-      toast.success('File removed successfully');
+
+      toast.success("File removed successfully");
     } catch (error) {
-      console.error('Error removing file:', error);
-      toast.error('Failed to remove file');
+      console.error("Error removing file:", error);
+      toast.error("Failed to remove file");
     }
   };
 
@@ -114,6 +174,8 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
     }
   };
 
+  const currentSvgUrl = form.watch("image_url");
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
@@ -123,7 +185,9 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Name <span className="text-red-500">*</span></FormLabel>
+                <FormLabel>
+                  Name <span className="text-red-500">*</span>
+                </FormLabel>
                 <FormControl>
                   <Input {...field} />
                 </FormControl>
@@ -137,7 +201,9 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
             name="category_icon"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Icon <span className="text-red-500">*</span></FormLabel>
+                <FormLabel>
+                  Material Icon <span className="text-red-500">*</span>
+                </FormLabel>
                 <div className="flex gap-2">
                   <FormControl>
                     <div className="flex-1 flex items-center gap-2 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
@@ -147,7 +213,7 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
                         </span>
                       )}
                       <span className="flex-1">
-                        {field.value || 'No icon selected'}
+                        {field.value || "No icon selected"}
                       </span>
                     </div>
                   </FormControl>
@@ -167,10 +233,88 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
 
         <FormField
           control={form.control}
+          name="image_url"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                SVG Icon <span className="text-red-500">*</span>
+              </FormLabel>
+              <div className="space-y-4">
+                {currentSvgUrl && (
+                  <div className="flex items-center gap-4 p-4 rounded-lg border bg-gray-50">
+                    <div className="w-12 h-12 bg-white rounded border flex items-center justify-center">
+                      <img
+                        src={currentSvgUrl}
+                        alt="Category SVG Icon"
+                        className="w-8 h-8"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">SVG Icon Uploaded</p>
+                      <p className="text-xs text-gray-500">
+                        Custom SVG icon for this category
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleRemoveSvg}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-4">
+                  <Input
+                    type="file"
+                    accept=".svg,image/svg+xml"
+                    onChange={handleSvgUpload}
+                    className="hidden"
+                    id="svg-upload"
+                    disabled={isUploadingSvg}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      document.getElementById("svg-upload")?.click()
+                    }
+                    className="w-full"
+                    disabled={isUploadingSvg}
+                  >
+                    {isUploadingSvg ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Uploading SVG...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        {currentSvgUrl ? "Replace SVG Icon" : "Upload SVG Icon"}
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Upload an SVG file that will be used as the category icon.
+                  Only .svg files are allowed.
+                </p>
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Description <span className="text-red-500">*</span></FormLabel>
+              <FormLabel>
+                Description <span className="text-red-500">*</span>
+              </FormLabel>
               <FormControl>
                 <Textarea {...field} />
               </FormControl>
@@ -186,8 +330,8 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
             <FormItem>
               <FormLabel>Knowledge Base Dump</FormLabel>
               <FormControl>
-                <Textarea 
-                  {...field} 
+                <Textarea
+                  {...field}
                   className="min-h-[200px]"
                   placeholder="Enter knowledge base content..."
                 />
@@ -229,7 +373,9 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => document.getElementById('file-upload')?.click()}
+                    onClick={() =>
+                      document.getElementById("file-upload")?.click()
+                    }
                     className="w-full"
                   >
                     <Upload className="h-4 w-4 mr-2" />
@@ -250,10 +396,12 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {initialData ? 'Updating...' : 'Creating...'}
+                {initialData ? "Updating..." : "Creating..."}
               </>
+            ) : initialData ? (
+              "Update Category"
             ) : (
-              initialData ? 'Update Category' : 'Create Category'
+              "Create Category"
             )}
           </Button>
         </div>
@@ -262,7 +410,7 @@ export function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormPr
       <IconSearchDialog
         open={showIconSearch}
         onOpenChange={setShowIconSearch}
-        onSelect={(iconName) => form.setValue('category_icon', iconName)}
+        onSelect={(iconName) => form.setValue("category_icon", iconName)}
       />
     </Form>
   );

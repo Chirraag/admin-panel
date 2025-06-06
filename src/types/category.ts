@@ -8,12 +8,14 @@ export interface Goal {
   id: string;
   name: string;
   description: string;
+  image_url?: string; // New field for goal image
 }
 
 export interface SaleType {
   id: string;
   name: string;
   description: string;
+  image_url?: string; // New field for sale type image
 }
 
 export interface Category {
@@ -21,6 +23,7 @@ export interface Category {
   name: string;
   description: string;
   category_icon: string;
+  image_url?: string; // New field for SVG icon (changed from svg_icon_url)
   knowledge_base: VapiFileInfo[];
   knowledge_base_dump: string;
   goals: Goal[];
@@ -31,4 +34,7 @@ export interface Category {
   onManageGoals?: (category: Category) => void;
 }
 
-export type CategoryFormData = Omit<Category, 'id' | 'onEdit' | 'onDelete' | 'onManageSaleTypes' | 'onManageGoals'>;
+export type CategoryFormData = Omit<
+  Category,
+  "id" | "onEdit" | "onDelete" | "onManageSaleTypes" | "onManageGoals"
+>;

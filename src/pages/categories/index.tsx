@@ -1,15 +1,30 @@
-import { useEffect, useState } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Category, CategoryFormData } from '@/types/category';
-import { DataTable } from '@/components/data-table/data-table';
-import { columns } from './columns';
-import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
-import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { sanitizeCategoryData } from '@/lib/utils/category';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { useEffect, useState } from "react";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  deleteDoc,
+  doc,
+  updateDoc,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { Category, CategoryFormData } from "@/types/category";
+import { DataTable } from "@/components/data-table/data-table";
+import { columns } from "./columns";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { sanitizeCategoryData } from "@/lib/utils/category";
+import { deleteStorageImage } from "@/lib/firebase-storage";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,18 +35,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CategoryForm } from './category-form';
-import { SaleTypesDialog } from './sale-types-dialog';
-import { GoalsDialog } from './goals-dialog';
-import { TransferDialog } from './transfer-dialog';
+import { CategoryForm } from "./category-form";
+import { SaleTypesDialog } from "./sale-types-dialog";
+import { GoalsDialog } from "./goals-dialog";
+import { TransferDialog } from "./transfer-dialog";
 
 export function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(
+    null,
+  );
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    null,
+  );
   const [showSaleTypes, setShowSaleTypes] = useState(false);
   const [showGoals, setShowGoals] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
@@ -40,30 +59,34 @@ export function CategoriesPage() {
 
   const fetchCategories = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'categories'));
-      const categoriesData = querySnapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id,
-        goals: doc.data().goals || [],
-        sale_types: doc.data().sale_types || [],
-        onEdit: (category: Category) => {
-          setEditingCategory(category);
-          setShowForm(true);
-        },
-        onDelete: (category: Category) => handleInitiateDelete(category),
-        onManageSaleTypes: (category: Category) => {
-          setSelectedCategoryId(category.id);
-          setShowSaleTypes(true);
-        },
-        onManageGoals: (category: Category) => {
-          setSelectedCategoryId(category.id);
-          setShowGoals(true);
-        },
-      } as Category));
+      const querySnapshot = await getDocs(collection(db, "categories"));
+      const categoriesData = querySnapshot.docs.map(
+        (doc) =>
+          ({
+            ...doc.data(),
+            id: doc.id,
+            goals: doc.data().goals || [],
+            sale_types: doc.data().sale_types || [],
+            image_url: doc.data().image_url || "",
+            onEdit: (category: Category) => {
+              setEditingCategory(category);
+              setShowForm(true);
+            },
+            onDelete: (category: Category) => handleInitiateDelete(category),
+            onManageSaleTypes: (category: Category) => {
+              setSelectedCategoryId(category.id);
+              setShowSaleTypes(true);
+            },
+            onManageGoals: (category: Category) => {
+              setSelectedCategoryId(category.id);
+              setShowGoals(true);
+            },
+          }) as Category,
+      );
       setCategories(categoriesData);
     } catch (error) {
-      console.error('Error fetching categories:', error);
-      toast.error('Failed to load categories');
+      console.error("Error fetching categories:", error);
+      toast.error("Failed to load categories");
     } finally {
       setLoading(false);
     }
@@ -77,14 +100,14 @@ export function CategoriesPage() {
     try {
       // Check for challenges using this category
       const challengesQuery = query(
-        collection(db, 'challenges'),
-        where('category_id', '==', category.id)
+        collection(db, "challenges"),
+        where("category_id", "==", category.id),
       );
       const challengesSnapshot = await getDocs(challengesQuery);
       const count = challengesSnapshot.size;
 
       setCategoryToDelete(category);
-      
+
       if (count > 0) {
         setSubmissionCount(count);
         setShowTransfer(true);
@@ -92,8 +115,47 @@ export function CategoriesPage() {
         setShowDeleteConfirmation(true);
       }
     } catch (error) {
-      console.error('Error checking challenges:', error);
-      toast.error('Failed to check category usage');
+      console.error("Error checking challenges:", error);
+      toast.error("Failed to check category usage");
+    }
+  };
+
+  const deleteCategoryImages = async (category: Category) => {
+    const deletePromises = [];
+
+    // Delete category SVG icon
+    if (category.image_url) {
+      deletePromises.push(deleteStorageImage(category.image_url));
+    }
+
+    // Delete goal images
+    if (category.goals) {
+      category.goals.forEach((goal) => {
+        if (goal.image_url) {
+          deletePromises.push(deleteStorageImage(goal.image_url));
+        }
+      });
+    }
+
+    // Delete sale type images
+    if (category.sale_types) {
+      category.sale_types.forEach((saleType) => {
+        if (saleType.image_url) {
+          deletePromises.push(deleteStorageImage(saleType.image_url));
+        }
+      });
+    }
+
+    // Execute all deletions (don't wait for them to complete)
+    if (deletePromises.length > 0) {
+      Promise.allSettled(deletePromises).then((results) => {
+        const failures = results.filter(
+          (result) => result.status === "rejected",
+        );
+        if (failures.length > 0) {
+          console.warn("Some images could not be deleted:", failures);
+        }
+      });
     }
   };
 
@@ -103,39 +165,47 @@ export function CategoriesPage() {
     try {
       // Update all challenges with the new category ID
       const challengesQuery = query(
-        collection(db, 'challenges'),
-        where('category_id', '==', categoryToDelete.id)
+        collection(db, "challenges"),
+        where("category_id", "==", categoryToDelete.id),
       );
       const challengesSnapshot = await getDocs(challengesQuery);
 
       // Update each challenge
-      const updatePromises = challengesSnapshot.docs.map(doc =>
-        updateDoc(doc.ref, { category_id: newCategoryId })
+      const updatePromises = challengesSnapshot.docs.map((doc) =>
+        updateDoc(doc.ref, { category_id: newCategoryId }),
       );
       await Promise.all(updatePromises);
 
-      // Delete the category
-      await deleteDoc(doc(db, 'categories', categoryToDelete.id));
+      // Delete images associated with the category
+      await deleteCategoryImages(categoryToDelete);
 
-      toast.success('Category deleted and challenges transferred successfully');
+      // Delete the category
+      await deleteDoc(doc(db, "categories", categoryToDelete.id));
+
+      toast.success("Category deleted and challenges transferred successfully");
       setShowTransfer(false);
       setCategoryToDelete(null);
       fetchCategories();
     } catch (error) {
-      console.error('Error transferring and deleting:', error);
-      toast.error('Failed to transfer challenges and delete category');
+      console.error("Error transferring and deleting:", error);
+      toast.error("Failed to transfer challenges and delete category");
     }
   };
 
   const handleDelete = async () => {
     if (!categoryToDelete) return;
     try {
-      await deleteDoc(doc(db, 'categories', categoryToDelete.id));
-      toast.success('Category deleted successfully');
+      // Delete images associated with the category
+      await deleteCategoryImages(categoryToDelete);
+
+      // Delete the category
+      await deleteDoc(doc(db, "categories", categoryToDelete.id));
+
+      toast.success("Category deleted successfully");
       fetchCategories();
     } catch (error) {
-      console.error('Error deleting category:', error);
-      toast.error('Failed to delete category');
+      console.error("Error deleting category:", error);
+      toast.error("Failed to delete category");
     } finally {
       setShowDeleteConfirmation(false);
       setCategoryToDelete(null);
@@ -147,20 +217,20 @@ export function CategoriesPage() {
       const sanitizedData = {
         ...sanitizeCategoryData(data),
         goals: [],
-        sale_types: []
+        sale_types: [],
       };
-      const docRef = await addDoc(collection(db, 'categories'), sanitizedData);
-      
-      await updateDoc(doc(db, 'categories', docRef.id), {
-        id: docRef.id
+      const docRef = await addDoc(collection(db, "categories"), sanitizedData);
+
+      await updateDoc(doc(db, "categories", docRef.id), {
+        id: docRef.id,
       });
-      
-      toast.success('Category created successfully');
+
+      toast.success("Category created successfully");
       setShowForm(false);
       fetchCategories();
     } catch (error) {
-      console.error('Error creating category:', error);
-      toast.error('Failed to create category');
+      console.error("Error creating category:", error);
+      toast.error("Failed to create category");
     }
   };
 
@@ -168,17 +238,19 @@ export function CategoriesPage() {
     if (!editingCategory) return;
     try {
       const sanitizedData = sanitizeCategoryData(data);
-      await updateDoc(doc(db, 'categories', editingCategory.id), {
+      await updateDoc(doc(db, "categories", editingCategory.id), {
         ...sanitizedData,
-        id: editingCategory.id
+        id: editingCategory.id,
+        goals: editingCategory.goals,
+        sale_types: editingCategory.sale_types,
       });
-      toast.success('Category updated successfully');
+      toast.success("Category updated successfully");
       setShowForm(false);
       setEditingCategory(null);
       fetchCategories();
     } catch (error) {
-      console.error('Error updating category:', error);
-      toast.error('Failed to update category');
+      console.error("Error updating category:", error);
+      toast.error("Failed to update category");
     }
   };
 
@@ -196,13 +268,16 @@ export function CategoriesPage() {
     );
   }
 
-  const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+  const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900">Categories</h1>
-        <Button onClick={() => setShowForm(true)} className="flex items-center gap-2">
+        <Button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2"
+        >
           <Plus className="h-4 w-4" />
           Add Category
         </Button>
@@ -219,19 +294,19 @@ export function CategoriesPage() {
       >
         <DialogContent className="max-w-4xl max-h-[90vh] p-0">
           <ScrollArea className="max-h-[90vh] p-6">
-          <DialogHeader>
-            <DialogTitle>
-              {editingCategory ? 'Edit Category' : 'Create Category'}
-            </DialogTitle>
-          </DialogHeader>
-          <CategoryForm
-            initialData={editingCategory || undefined}
-            onSubmit={editingCategory ? handleUpdate : handleCreate}
-            onCancel={() => {
-              setShowForm(false);
-              setEditingCategory(null);
-            }}
-          />
+            <DialogHeader>
+              <DialogTitle>
+                {editingCategory ? "Edit Category" : "Create Category"}
+              </DialogTitle>
+            </DialogHeader>
+            <CategoryForm
+              initialData={editingCategory || undefined}
+              onSubmit={editingCategory ? handleUpdate : handleCreate}
+              onCancel={() => {
+                setShowForm(false);
+                setEditingCategory(null);
+              }}
+            />
           </ScrollArea>
         </DialogContent>
       </Dialog>
@@ -289,8 +364,8 @@ export function CategoriesPage() {
       )}
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog 
-        open={showDeleteConfirmation} 
+      <AlertDialog
+        open={showDeleteConfirmation}
         onOpenChange={(open) => {
           if (!open) handleCancelDelete();
         }}
@@ -299,12 +374,15 @@ export function CategoriesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the category
-              and all associated data.
+              This action cannot be undone. This will permanently delete the
+              category, its SVG icon, and all associated goal and sale type
+              images.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelDelete}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={handleCancelDelete}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-red-600 hover:bg-red-700"

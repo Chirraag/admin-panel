@@ -16,13 +16,26 @@ export const columns: ColumnDef<Category>[] = [
     cell: ({ row }) => {
       const category = row.original;
       return (
-        <div className="flex items-center gap-2">
-          {category.category_icon && (
-            <span className="material-symbols-outlined">
-              {category.category_icon}
-            </span>
-          )}
-          <span>{category.name}</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* SVG Icon */}
+            {category.image_url && (
+              <div className="w-8 h-8 flex items-center justify-center">
+                <img
+                  src={category.image_url}
+                  alt={`${category.name} icon`}
+                  className="w-6 h-6"
+                />
+              </div>
+            )}
+            {/* Material Icon (fallback) */}
+            {category.category_icon && !category.image_url && (
+              <span className="material-symbols-outlined text-xl">
+                {category.category_icon}
+              </span>
+            )}
+          </div>
+          <span className="font-medium">{category.name}</span>
         </div>
       );
     },
@@ -30,6 +43,32 @@ export const columns: ColumnDef<Category>[] = [
   {
     accessorKey: "description",
     header: "Description",
+    cell: ({ row }) => {
+      const description = row.getValue("description") as string;
+      return (
+        <div className="max-w-md">
+          <p className="text-sm text-gray-600 line-clamp-2">{description}</p>
+        </div>
+      );
+    },
+  },
+  {
+    id: "stats",
+    header: "Content",
+    cell: ({ row }) => {
+      const category = row.original;
+      const goalCount = category.goals?.length || 0;
+      const saleTypeCount = category.sale_types?.length || 0;
+      const knowledgeBaseCount = category.knowledge_base?.length || 0;
+
+      return (
+        <div className="flex items-center gap-4 text-sm text-gray-500">
+          <span>{goalCount} Goals</span>
+          <span>{saleTypeCount} Sale Types</span>
+          <span>{knowledgeBaseCount} Files</span>
+        </div>
+      );
+    },
   },
   {
     id: "actions",
@@ -63,7 +102,7 @@ export const columns: ColumnDef<Category>[] = [
               <DropdownMenuItem onClick={() => category.onEdit?.(category)}>
                 Edit
               </DropdownMenuItem>
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => category.onDelete?.(category)}
                 className="text-red-600"
               >

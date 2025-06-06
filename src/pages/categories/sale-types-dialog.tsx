@@ -1,16 +1,16 @@
-import { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { SaleType } from '@/types/category';
-import { Button } from '@/components/ui/button';
-import { Plus, MoreHorizontal } from 'lucide-react';
-import { toast } from 'sonner';
+import { useState } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { SaleType } from "@/types/category";
+import { Button } from "@/components/ui/button";
+import { Plus, MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,14 +20,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { SaleTypeForm } from './sale-type-form';
+} from "@/components/ui/dropdown-menu";
+import { SaleTypeForm } from "./sale-type-form";
+import { deleteStorageImage } from "@/lib/firebase-storage";
 
 interface SaleTypesDialogProps {
   categoryId: string;
@@ -36,66 +37,87 @@ interface SaleTypesDialogProps {
   onUpdate: () => void;
 }
 
-export function SaleTypesDialog({ categoryId, saleTypes, onClose, onUpdate }: SaleTypesDialogProps) {
+export function SaleTypesDialog({
+  categoryId,
+  saleTypes,
+  onClose,
+  onUpdate,
+}: SaleTypesDialogProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingSaleType, setEditingSaleType] = useState<SaleType | null>(null);
-  const [saleTypeToDelete, setSaleTypeToDelete] = useState<SaleType | null>(null);
+  const [saleTypeToDelete, setSaleTypeToDelete] = useState<SaleType | null>(
+    null,
+  );
 
-  const handleCreate = async (data: Omit<SaleType, 'id'>) => {
+  const handleCreate = async (data: Omit<SaleType, "id">) => {
     try {
       const newSaleType: SaleType = {
         id: crypto.randomUUID(),
-        ...data
+        ...data,
       };
 
-      await updateDoc(doc(db, 'categories', categoryId), {
-        sale_types: [...saleTypes, newSaleType]
+      await updateDoc(doc(db, "categories", categoryId), {
+        sale_types: [...saleTypes, newSaleType],
       });
 
-      toast.success('Sale type created successfully');
+      toast.success("Sale type created successfully");
       setShowForm(false);
       onUpdate();
     } catch (error) {
-      console.error('Error creating sale type:', error);
-      toast.error('Failed to create sale type');
+      console.error("Error creating sale type:", error);
+      toast.error("Failed to create sale type");
     }
   };
 
-  const handleUpdate = async (data: Omit<SaleType, 'id'>) => {
+  const handleUpdate = async (data: Omit<SaleType, "id">) => {
     if (!editingSaleType) return;
     try {
-      const updatedSaleTypes = saleTypes.map(saleType => 
-        saleType.id === editingSaleType.id ? { ...saleType, ...data } : saleType
+      const updatedSaleTypes = saleTypes.map((saleType) =>
+        saleType.id === editingSaleType.id
+          ? { ...saleType, ...data }
+          : saleType,
       );
 
-      await updateDoc(doc(db, 'categories', categoryId), {
-        sale_types: updatedSaleTypes
+      await updateDoc(doc(db, "categories", categoryId), {
+        sale_types: updatedSaleTypes,
       });
 
-      toast.success('Sale type updated successfully');
+      toast.success("Sale type updated successfully");
       setShowForm(false);
       setEditingSaleType(null);
       onUpdate();
     } catch (error) {
-      console.error('Error updating sale type:', error);
-      toast.error('Failed to update sale type');
+      console.error("Error updating sale type:", error);
+      toast.error("Failed to update sale type");
     }
   };
 
   const handleDelete = async () => {
     if (!saleTypeToDelete) return;
     try {
-      const updatedSaleTypes = saleTypes.filter(saleType => saleType.id !== saleTypeToDelete.id);
-      
-      await updateDoc(doc(db, 'categories', categoryId), {
-        sale_types: updatedSaleTypes
+      // Delete the SVG image from storage if it exists
+      if (saleTypeToDelete.image_url) {
+        try {
+          await deleteStorageImage(saleTypeToDelete.image_url);
+        } catch (error) {
+          console.error("Error deleting sale type SVG image:", error);
+          // Continue with sale type deletion even if image deletion fails
+        }
+      }
+
+      const updatedSaleTypes = saleTypes.filter(
+        (saleType) => saleType.id !== saleTypeToDelete.id,
+      );
+
+      await updateDoc(doc(db, "categories", categoryId), {
+        sale_types: updatedSaleTypes,
       });
 
-      toast.success('Sale type deleted successfully');
+      toast.success("Sale type deleted successfully");
       onUpdate();
     } catch (error) {
-      console.error('Error deleting sale type:', error);
-      toast.error('Failed to delete sale type');
+      console.error("Error deleting sale type:", error);
+      toast.error("Failed to delete sale type");
     } finally {
       setSaleTypeToDelete(null);
     }
@@ -103,13 +125,16 @@ export function SaleTypesDialog({ categoryId, saleTypes, onClose, onUpdate }: Sa
 
   return (
     <>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Sale Types</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <Button onClick={() => setShowForm(true)} className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2"
+          >
             <Plus className="h-4 w-4" />
             Add Sale Type
           </Button>
@@ -118,15 +143,30 @@ export function SaleTypesDialog({ categoryId, saleTypes, onClose, onUpdate }: Sa
             {saleTypes.map((saleType) => (
               <div
                 key={saleType.id}
-                className="flex items-start justify-between p-4 rounded-lg border"
+                className="flex items-start gap-4 p-4 rounded-lg border"
               >
-                <div>
+                {saleType.image_url && (
+                  <div className="w-16 h-16 bg-gray-100 rounded border flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <img
+                      src={saleType.image_url}
+                      alt={saleType.name}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
                   <h3 className="font-medium">{saleType.name}</h3>
-                  <p className="text-sm text-gray-500">{saleType.description}</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {saleType.description}
+                  </p>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="flex-shrink-0"
+                    >
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -149,6 +189,12 @@ export function SaleTypesDialog({ categoryId, saleTypes, onClose, onUpdate }: Sa
                 </DropdownMenu>
               </div>
             ))}
+            {saleTypes.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                No sale types added yet. Click "Add Sale Type" to create your
+                first sale type.
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>
@@ -163,10 +209,11 @@ export function SaleTypesDialog({ categoryId, saleTypes, onClose, onUpdate }: Sa
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingSaleType ? 'Edit Sale Type' : 'Create Sale Type'}
+              {editingSaleType ? "Edit Sale Type" : "Create Sale Type"}
             </DialogTitle>
           </DialogHeader>
           <SaleTypeForm
+            categoryId={categoryId}
             initialData={editingSaleType || undefined}
             onSubmit={editingSaleType ? handleUpdate : handleCreate}
             onCancel={() => {
@@ -185,7 +232,8 @@ export function SaleTypesDialog({ categoryId, saleTypes, onClose, onUpdate }: Sa
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the sale type.
+              This action cannot be undone. This will permanently delete the
+              sale type and its associated SVG image.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
