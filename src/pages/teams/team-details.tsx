@@ -13,12 +13,16 @@ import {
 import { db } from "@/lib/firebase";
 import { TeamDocument } from "@/types/team";
 import { Challenge, ChallengeFormData } from "@/types/challenge";
+import { Course, CourseFormData, Video } from "@/types/course";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MembersDialog } from "./components/members-dialog";
 import { Button } from "@/components/ui/button";
 import { ChallengeImportTab } from "./components/ChallengeImportTab";
+import { CourseForm } from "@/pages/courses/course-form";
+import { DataTable } from "@/components/data-table/data-table";
+import { deleteVideo } from "@/lib/s3";
 import {
   Users,
   FileText,
@@ -27,6 +31,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  BookOpen,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -47,6 +52,7 @@ import {
 } from "@/components/ui/dialog";
 import { TeamDetailsForm } from "./components/team-details-form";
 import { ChallengeForm } from "@/pages/challenges/challenge-form";
+import { CourseImportTab } from "./components/course-import-tab";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,21 +64,149 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+// Course columns for team courses table
+const createTeamCourseColumns = (
+  onEdit: (course: Course) => void,
+  onDelete: (course: Course) => void,
+) => [
+  {
+    accessorKey: "title",
+    header: "Title",
+    cell: ({ row }: any) => {
+      const course = row.original;
+      return (
+        <div className="flex items-center gap-4">
+          {course.wall_image && (
+            <img
+              src={course.wall_image}
+              alt={course.title}
+              className="h-12 w-20 object-cover rounded"
+            />
+          )}
+          <span>{course.title}</span>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "description",
+    header: "Description",
+  },
+  {
+    accessorKey: "author_name",
+    header: "Author",
+  },
+  {
+    accessorKey: "videos",
+    header: "Videos",
+    cell: ({ row }: any) => {
+      const videos = row.getValue("videos") as Course["videos"];
+      return videos?.length || 0;
+    },
+  },
+  {
+    accessorKey: "created_at",
+    header: "Created",
+    cell: ({ row }: any) => {
+      const date = row.getValue("created_at") as any;
+      if (!date) return "N/A";
+
+      try {
+        if (date && typeof date.toDate === "function") {
+          return format(date.toDate(), "MMM dd, yyyy");
+        }
+        if (date instanceof Date) {
+          return format(date, "MMM dd, yyyy");
+        }
+        return "N/A";
+      } catch (error) {
+        return "N/A";
+      }
+    },
+  },
+  {
+    id: "actions",
+    cell: ({ row }: any) => {
+      const course = row.original;
+      return (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onEdit(course)}
+            title="Edit course"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onDelete(course)}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            title="Delete course"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      );
+    },
+  },
+];
+
 export function TeamDetailsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
   const [team, setTeam] = useState<TeamDocument | null>(null);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showMembersDialog, setShowMembersDialog] = useState(false);
   const [showChallengeForm, setShowChallengeForm] = useState(false);
+  const [showCourseForm, setShowCourseForm] = useState(false);
   const [editingChallenge, setEditingChallenge] = useState<Challenge | null>(
     null,
   );
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [challengeToDelete, setChallengeToDelete] = useState<Challenge | null>(
     null,
   );
+  const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
+  const [isDeletingCourse, setIsDeletingCourse] = useState(false);
+
+  const handleImportCourse = async (course: Course) => {
+    if (!team) return;
+
+    try {
+      // Create a new course in this team's subcollection
+      // Clone all data but create a new ID
+      const { id, course_id, ...courseData } = course;
+
+      // Add the course to team's courses subcollection
+      const docRef = await addDoc(
+        collection(doc(db, "teams", team.id), "courses"),
+        {
+          ...courseData,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        },
+      );
+
+      // Update the document with its own ID
+      await updateDoc(docRef, {
+        course_id: docRef.id,
+      });
+
+      toast.success("Course imported successfully");
+      setShowCourseForm(false);
+
+      // Refresh courses
+      fetchTeamData();
+    } catch (error) {
+      console.error("Error importing course:", error);
+      toast.error("Failed to import course");
+    }
+  };
 
   const fetchTeamData = async () => {
     if (!teamId) return;
@@ -104,6 +238,17 @@ export function TeamDetailsPage() {
         ...doc.data(),
       })) as Challenge[];
       setChallenges(challengesData);
+
+      // Fetch team courses from subcollection
+      const coursesSnapshot = await getDocs(
+        collection(doc(db, "teams", teamId), "courses"),
+      );
+      const coursesData = coursesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        course_id: doc.id,
+        ...doc.data(),
+      })) as Course[];
+      setCourses(coursesData);
     } catch (error) {
       console.error("Error fetching team data:", error);
       setError(
@@ -120,11 +265,11 @@ export function TeamDetailsPage() {
     fetchTeamData();
   }, [teamId]);
 
+  // Challenge handlers (existing)
   const handleCreateChallenge = async (data: ChallengeFormData) => {
     if (!team) return;
 
     try {
-      // Add challenge to team's challenges subcollection
       const challengeData = {
         ...data,
         dateAt: serverTimestamp(),
@@ -138,8 +283,6 @@ export function TeamDetailsPage() {
       toast.success("Challenge created successfully");
       setShowChallengeForm(false);
       setEditingChallenge(null);
-
-      // Refresh challenges
       fetchTeamData();
     } catch (error) {
       console.error("Error creating challenge:", error);
@@ -151,11 +294,8 @@ export function TeamDetailsPage() {
     if (!team) return;
 
     try {
-      // Create a new challenge in this team's subcollection
-      // Clone all data but create a new ID
       const { id, ...challengeData } = challenge;
 
-      // Add the challenge to team's challenges subcollection
       await addDoc(collection(doc(db, "teams", team.id), "challenges"), {
         ...challengeData,
         dateAt: serverTimestamp(),
@@ -163,8 +303,6 @@ export function TeamDetailsPage() {
 
       toast.success("Challenge imported successfully");
       setShowChallengeForm(false);
-
-      // Refresh challenges
       fetchTeamData();
     } catch (error) {
       console.error("Error importing challenge:", error);
@@ -176,7 +314,6 @@ export function TeamDetailsPage() {
     if (!team || !editingChallenge) return;
 
     try {
-      // Update challenge in team's challenges subcollection
       await updateDoc(
         doc(db, "teams", team.id, "challenges", editingChallenge.id),
         {
@@ -188,8 +325,6 @@ export function TeamDetailsPage() {
       toast.success("Challenge updated successfully");
       setShowChallengeForm(false);
       setEditingChallenge(null);
-
-      // Refresh challenges
       fetchTeamData();
     } catch (error) {
       console.error("Error updating challenge:", error);
@@ -201,15 +336,12 @@ export function TeamDetailsPage() {
     if (!team || !challengeToDelete) return;
 
     try {
-      // Delete challenge from team's challenges subcollection
       await deleteDoc(
         doc(db, "teams", team.id, "challenges", challengeToDelete.id),
       );
 
       toast.success("Challenge deleted successfully");
       setChallengeToDelete(null);
-
-      // Refresh challenges
       fetchTeamData();
     } catch (error) {
       console.error("Error deleting challenge:", error);
@@ -222,86 +354,141 @@ export function TeamDetailsPage() {
     setShowChallengeForm(true);
   };
 
-  // Replace the handleUpdateDetails function in src/pages/teams/team-details.tsx
-
-  // Complete rewrite of the handleUpdateDetails function for src/pages/teams/team-details.tsx
-
-  // Proper implementation of handleUpdateDetails function to add to TeamDetailsPage
-  // Add this function inside the TeamDetailsPage component
-
-  const handleUpdateDetails = async (data: any) => {
-    if (!team) {
-      toast.error("No team data available");
-      return;
-    }
+  // Course handlers (new)
+  const handleCreateCourse = async (data: CourseFormData, videos: Video[]) => {
+    if (!team) return;
 
     try {
-      console.log("Updating team with data:", JSON.stringify(data, null, 2));
-      console.log("Current team ID:", team.id);
-
-      // Create a clean update object with explicit type casting
-      const updateData: Record<string, any> = {
-        name: data.name?.toString() || "",
-        description: data.description?.toString() || "",
-        category: data.category?.toString() || "SaaS Sales",
-        website: data.website?.toString() || "",
-        customers_desc: data.customers_desc?.toString() || "",
-        offerings_desc: data.offerings_desc?.toString() || "",
+      const timestamp = serverTimestamp();
+      const courseData = {
+        ...data,
+        videos,
+        created_at: timestamp,
+        updated_at: timestamp,
       };
 
-      // Handle the team_leader_email field specifically
-      // Only include it if it exists in the team AND is not undefined
-      if (team.team_leader_email !== undefined) {
-        updateData.team_leader_email = team.team_leader_email;
+      const docRef = await addDoc(
+        collection(doc(db, "teams", team.id), "courses"),
+        courseData,
+      );
+
+      // Update the document with its own ID
+      await updateDoc(docRef, {
+        course_id: docRef.id,
+      });
+
+      toast.success("Course created successfully");
+      setShowCourseForm(false);
+      setEditingCourse(null);
+      fetchTeamData();
+    } catch (error) {
+      console.error("Error creating course:", error);
+      toast.error("Failed to create course");
+    }
+  };
+
+  const handleUpdateCourse = async (data: CourseFormData, videos: Video[]) => {
+    if (!team || !editingCourse) return;
+
+    try {
+      // Only delete videos that were explicitly removed
+      const removedVideos = editingCourse.videos.filter(
+        (oldVideo) => !videos.some((newVideo) => newVideo.id === oldVideo.id),
+      );
+
+      // Delete removed videos from S3
+      for (const video of removedVideos) {
+        await deleteVideo(video.url);
       }
 
-      // Handle social media separately to ensure correct structure
-      updateData.social_media = {
-        instagram: data.social_media?.instagram?.toString() || "",
-        tiktok: data.social_media?.tiktok?.toString() || "",
-        youtube: data.social_media?.youtube?.toString() || "",
-        twitter: data.social_media?.twitter?.toString() || "",
+      // Update the course with new data and videos
+      await updateDoc(doc(db, "teams", team.id, "courses", editingCourse.id), {
+        ...data,
+        videos,
+        updated_at: serverTimestamp(),
+      });
+
+      toast.success("Course updated successfully");
+      setShowCourseForm(false);
+      setEditingCourse(null);
+      fetchTeamData();
+    } catch (error) {
+      console.error("Error updating course:", error);
+      toast.error("Failed to update course");
+    }
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!team || !courseToDelete) return;
+
+    setIsDeletingCourse(true);
+    try {
+      // Delete all videos from S3
+      const deletePromises = courseToDelete.videos.map((video) =>
+        deleteVideo(video.url),
+      );
+      await Promise.all(deletePromises);
+
+      // Delete course from team's courses subcollection
+      await deleteDoc(doc(db, "teams", team.id, "courses", courseToDelete.id));
+
+      toast.success("Course and all videos deleted successfully");
+      setCourseToDelete(null);
+      fetchTeamData();
+    } catch (error) {
+      console.error("Error deleting course:", error);
+      toast.error("Failed to delete course");
+    } finally {
+      setIsDeletingCourse(false);
+    }
+  };
+
+  const handleEditCourse = (course: Course) => {
+    setEditingCourse(course);
+    setShowCourseForm(true);
+  };
+
+  // Team details handler (existing)
+  const handleUpdateDetails = async (data: any) => {
+    if (!team) return;
+
+    try {
+      const updateData = {
+        name: data.name,
+        description: data.description,
+        category: data.category,
+        website: data.website,
+        team_leader_email: data.team_leader_email,
+        company_logo: data.company_logo,
+        customers_desc: data.customers_desc,
+        offerings_desc: data.offerings_desc,
+        social_media: data.social_media,
+        updated_at: serverTimestamp(),
+        ...(data.knowledge_base && {
+          knowledge_base: data.knowledge_base.map((file: any) => ({
+            id: file.id,
+            name: file.name,
+            url: file.url,
+            type: file.type,
+          })),
+        }),
       };
 
-      // Only include company_logo if it exists and is a valid string
-      if (data.company_logo && typeof data.company_logo === "string") {
-        updateData.company_logo = data.company_logo;
-      }
+      await updateDoc(doc(db, "teams", team.id), updateData);
 
-      // Add updated_at timestamp
-      updateData.updated_at = serverTimestamp();
-
-      console.log("Clean update data:", JSON.stringify(updateData, null, 2));
-
-      // Ensure we remove any undefined values before updating
-      Object.keys(updateData).forEach((key) => {
-        if (updateData[key] === undefined) {
-          console.log(`Removing undefined field: ${key}`);
-          delete updateData[key];
-        }
-      });
-
-      // Update the document
-      const docRef = doc(db, "teams", team.id);
-      await updateDoc(docRef, updateData);
-
-      // Update local state with the same data we sent to Firestore
-      setTeam((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          ...updateData,
-          // Convert serverTimestamp back to a regular date for the local state
-          updated_at: new Date(),
-        };
-      });
+      setTeam((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...updateData,
+            }
+          : null,
+      );
 
       toast.success("Team details updated successfully");
     } catch (error) {
       console.error("Error updating team details:", error);
-      toast.error(
-        `Failed to update team details: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      toast.error("Failed to update team details");
     }
   };
 
@@ -348,6 +535,12 @@ export function TeamDetailsPage() {
     );
   }
 
+  // Create columns with handlers
+  const courseColumns = createTeamCourseColumns(
+    handleEditCourse,
+    setCourseToDelete,
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -391,8 +584,7 @@ export function TeamDetailsPage() {
           </Button>
         </div>
       </div>
-
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <Card className="p-6">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-gray-500" />
@@ -411,6 +603,14 @@ export function TeamDetailsPage() {
 
         <Card className="p-6">
           <div className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-gray-500" />
+            <h3 className="font-semibold">Courses</h3>
+          </div>
+          <p className="mt-2 text-2xl font-bold">{courses.length}</p>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-gray-500" />
             <h3 className="font-semibold">Knowledge Base</h3>
           </div>
@@ -419,13 +619,13 @@ export function TeamDetailsPage() {
           </p>
         </Card>
       </div>
-
       <Card>
         <Tabs defaultValue="details" className="w-full">
           <TabsList className="w-full border-b">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
             <TabsTrigger value="challenges">Challenges</TabsTrigger>
+            <TabsTrigger value="courses">Courses</TabsTrigger>
           </TabsList>
 
           <TabsContent value="details" className="p-6">
@@ -549,26 +749,41 @@ export function TeamDetailsPage() {
               </Table>
             </ScrollArea>
           </TabsContent>
+
+          <TabsContent value="courses" className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Team Courses</h3>
+              <Button
+                onClick={() => {
+                  setEditingCourse(null);
+                  setShowCourseForm(true);
+                }}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Course
+              </Button>
+            </div>
+            <DataTable columns={courseColumns} data={courses} />
+          </TabsContent>
         </Tabs>
       </Card>
-
       <MembersDialog
         team={team}
         open={showMembersDialog}
         onOpenChange={setShowMembersDialog}
         onUpdate={fetchTeamData}
       />
-
       <Dialog open={showChallengeForm} onOpenChange={setShowChallengeForm}>
         <DialogContent className="max-w-4xl max-h-[85vh] p-0">
           <ScrollArea className="max-h-[85vh] p-6">
             <DialogHeader>
-              <DialogTitle>Create Challenge</DialogTitle>
+              <DialogTitle>
+                {editingChallenge ? "Edit Challenge" : "Create Challenge"}
+              </DialogTitle>
             </DialogHeader>
 
-            {/* Check if your ChallengeForm has its own tabs structure and integrate with it */}
             {editingChallenge ? (
-              // When editing, just show the form directly without tabs
               <ChallengeForm
                 initialData={editingChallenge}
                 onSubmit={handleUpdateChallenge}
@@ -578,36 +793,17 @@ export function TeamDetailsPage() {
                 }}
               />
             ) : (
-              // When creating new, show tabs with all three options
               <Tabs defaultValue="manual" className="mt-4">
                 <TabsList className="grid grid-cols-2 mb-6">
                   <TabsTrigger value="manual">Create new</TabsTrigger>
                   <TabsTrigger value="import">Import from Public</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="ai" className="space-y-4">
-                  {/* AI Generation content */}
-                  <div className="space-y-4">
-                    <textarea
-                      className="w-full min-h-[100px] p-3 border rounded-md"
-                      placeholder="Add any specific requirements or context for the AI generator..."
-                    />
-                    <Button className="w-full">Generate with AI</Button>
-                    <div className="p-4 bg-gray-50 rounded-md text-sm">
-                      Click the button above to generate a challenge using AI.
-                      The generated challenge will include realistic scenarios,
-                      product details, and training parameters.
-                    </div>
-                  </div>
-                </TabsContent>
-
                 <TabsContent value="manual">
-                  {/* Use the ChallengeForm but possibly with a prop to avoid showing its own tabs */}
                   <ChallengeForm
                     initialData={undefined}
                     onSubmit={handleCreateChallenge}
                     onCancel={() => setShowChallengeForm(false)}
-                    hideInternalTabs={true} // Add this prop if your ChallengeForm has this option
                   />
                 </TabsContent>
 
@@ -616,6 +812,62 @@ export function TeamDetailsPage() {
                 </TabsContent>
               </Tabs>
             )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showCourseForm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowCourseForm(false);
+            setEditingCourse(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingCourse ? "Edit Course" : "Create Course"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[calc(90vh-8rem)] pr-6">
+            <div className="space-y-6">
+              {editingCourse ? (
+                // When editing, show the form directly
+                <CourseForm
+                  initialData={editingCourse}
+                  videos={editingCourse.videos || []}
+                  onSubmit={handleUpdateCourse}
+                  onCancel={() => {
+                    setShowCourseForm(false);
+                    setEditingCourse(null);
+                  }}
+                />
+              ) : (
+                // When creating new, show tabs with create and import options
+                <Tabs defaultValue="create" className="w-full">
+                  <TabsList className="grid grid-cols-2 mb-6">
+                    <TabsTrigger value="create">Create New</TabsTrigger>
+                    <TabsTrigger value="import">
+                      Import from Library
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="create">
+                    <CourseForm
+                      onSubmit={handleCreateCourse}
+                      onCancel={() => setShowCourseForm(false)}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="import">
+                    <CourseImportTab onImport={handleImportCourse} />
+                  </TabsContent>
+                </Tabs>
+              )}
+            </div>
           </ScrollArea>
         </DialogContent>
       </Dialog>
@@ -639,6 +891,32 @@ export function TeamDetailsPage() {
               className="bg-red-600 hover:bg-red-700"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!courseToDelete}
+        onOpenChange={() => !isDeletingCourse && setCourseToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the
+              course and all its videos from both the database and storage.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingCourse}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCourse}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={isDeletingCourse}
+            >
+              {isDeletingCourse ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

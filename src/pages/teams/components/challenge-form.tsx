@@ -102,11 +102,11 @@ export function ChallengeForm({
 
   return (
     <div className="space-y-6">
-      <DialogHeader>
+      {/* <DialogHeader>
         <DialogTitle>
-          {initialData ? "Edit Challenge" : }
+          {initialData ? "" : }
         </DialogTitle>
-      </DialogHeader>
+      </DialogHeader> */}
 
       {hasRequiredFieldErrors && (
         <Alert variant="destructive">
